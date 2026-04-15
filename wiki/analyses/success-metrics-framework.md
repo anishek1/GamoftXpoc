@@ -25,45 +25,77 @@ This reframe exposes three measurement traps.
 
 ### 1.2 The Three Measurement Traps
 
-| # | Trap | Problem | Mitigation |
-|---|------|---------|------------|
-| 1 | **Counterfactual** | Can only observe outcomes of *called* leads. Cannot measure missed conversions in COLD bucket. True recall is unmeasurable by default. | **Curiosity Budget** — mandate calling 5% of COLD leads per week. Their conversion rate becomes COLD baseline. |
-| 2 | **Attribution** | HOT converts → credit goes to score, salesperson, product, or luck. All four get it simultaneously. | **Per-salesperson lift** (intra-user pre/post) isolates system impact from salesperson skill. |
-| 3 | **One-number accuracy** | "Accuracy" conflates bucket, explanation, confidence, action — all independent failure modes. | **Decompose into 4 dimensions** with separate metrics per failure mode. |
+**Trap 1 — Counterfactual**
 
-### 1.3 Terminology Quick Reference
+The problem is that we can only observe outcomes of leads that were actually called. We cannot measure missed conversions sitting in the COLD bucket. This means true recall is unmeasurable by default — we never know what we missed.
 
-| Term | Definition |
-|------|-----------|
-| **Tier** | Hierarchy layer (0–3) determining who reviews the metric, how often, what action is taken. |
-| **Target** | Threshold defining "good enough." Four types: hard, soft, alert threshold, ratio. |
-| **Availability** | Earliest date a metric can be measured meaningfully (Day 0, Week N, Month N). |
-| **Curiosity Budget** | Mandated 5% sampling of COLD bucket for baseline conversion measurement. |
-| **Shadow re-run** | Independent re-execution of Agent E using a different LLM provider for cross-validation. |
+The mitigation is the **Curiosity Budget**: mandate calling 5% of COLD leads every week. Their conversion rate then becomes the COLD baseline, giving us a window into what the system is quietly ignoring.
+
+**Trap 2 — Attribution**
+
+The problem is that when a HOT lead converts, the credit goes simultaneously to the score, the salesperson, the product, and plain luck. There is no clean way to isolate any one factor.
+
+The mitigation is **per-salesperson lift**: compare each salesperson's conversion rate before and after launch, intra-user. This isolates the system's impact from the salesperson's inherent skill level.
+
+**Trap 3 — One-Number Accuracy**
+
+The problem is that the word "accuracy" collapses four independent failure modes — bucket assignment, explanation quality, confidence calibration, and action relevance — into a single number that hides where exactly things go wrong.
+
+The mitigation is to **decompose into 4 dimensions** and assign separate metrics to each failure mode, so we know which specific thing broke when something goes wrong.
+
+### 1.3 Terminology
+
+**Tier** — A hierarchy layer numbered 0 through 3 that determines who reviews the metric, how often they review it, and what action they are expected to take when something moves.
+
+**Target** — A threshold that defines "good enough." There are four types: hard (pass/fail — below this is a bug), soft (directional — ramps with system maturity), alert threshold (a floor below which the system is considered broken), and ratio (a relative comparison that is less sensitive to noise).
+
+**Availability** — The earliest date at which a metric can be measured in a meaningful way. Expressed as Day 0, Week N, or Month N.
+
+**Curiosity Budget** — A mandated practice of sampling 5% of COLD bucket leads for calling every week. This is the only structural mechanism that makes COLD baseline conversion measurable.
+
+**Shadow re-run** — An independent re-execution of Agent E using a different LLM provider, used for cross-validation of scores.
 
 ---
 
 ## 2. Tier Hierarchy
 
-| Tier | Name | Reviewers | Cadence | # Metrics | Purpose |
-|------|------|-----------|---------|-----------|---------|
-| **0** | North Star | Leadership, tenant admin | Quarterly | 1–3 total | Defines whether the product is succeeding at its real job. |
-| **1** | Health Scorecard | Owner, team lead | Weekly | ≤7 per tenant | Leading indicators for Tier 0. Main operational dashboard. |
-| **2** | Diagnostic | Engineer, analyst | On-demand | Unbounded | Drill-down when Tier 1 moves unexpectedly. Answers "why." |
-| **3** | Infrastructure | Engineering | Daily / alert | Unbounded | Cost, latency, log integrity, data isolation. |
+**Tier 0 — North Star**
+
+Reviewed by Leadership and tenant admins on a quarterly cadence. Contains only 1 to 3 metrics in total across the entire system. These metrics define whether the product is succeeding at its real job — not its intermediate job, but its ultimate purpose.
+
+**Tier 1 — Health Scorecard**
+
+Reviewed by the product owner and team lead on a weekly cadence. Contains no more than 7 metrics per tenant. These are the leading indicators for Tier 0 and form the main operational dashboard the team watches.
+
+**Tier 2 — Diagnostic**
+
+Reviewed by engineers and analysts on demand — meaning only when a Tier 1 metric moves unexpectedly. The number of metrics here is unbounded. The purpose is to answer the question "why did that move?" rather than to monitor health.
+
+**Tier 3 — Infrastructure**
+
+Reviewed by the engineering team daily or via automated alerts. Also unbounded in count. Covers cost, latency, log integrity, and data isolation — the foundational hygiene without which nothing else is reliable.
 
 ---
 
-## 3. Target Types (glossary)
+## 3. Target Types
 
-| Type | Usage | Example |
-|------|-------|---------|
-| **Hard** | Pass/fail. Below = bug. | "100% of leads logged with `prompt_version`" |
-| **Soft** | Directional. Ramps with maturity. | ">70% SLA compliance Month 1; >85% Month 3" |
-| **Alert threshold** | Floor below which system is broken. | "<20% feedback rate triggers alert" (locked) |
-| **Ratio** | Relative comparison; less noise-sensitive. | "HOT:COLD conversion ≥ 2.5×" |
+**Hard Target**
 
-**Every target is conditional on:** minimum sample size (N≥30 default), per-tenant baseline (never global-only), and system maturity stage.
+This is a pass/fail threshold. Falling below it means there is a bug, not a performance issue. An example is "100% of leads must be logged with `prompt_version`" — anything less than 100% is a defect to be fixed immediately.
+
+**Soft Target**
+
+This is a directional target that is expected to ramp up as the system matures. It is not a bug if you miss it early, but you must be trending toward it. An example is ">70% SLA compliance in Month 1, rising to >85% by Month 3."
+
+**Alert Threshold**
+
+This is a floor. Falling below it means the system is considered broken, not just underperforming. An example is "<20% feedback rate triggers an alert" — this threshold is locked and does not soften with time.
+
+**Ratio Target**
+
+This is a relative comparison between two rates rather than an absolute number. It is less sensitive to noise because both sides of the ratio move together in a well-functioning system. An example is "HOT:COLD conversion must be at least 2.5 times."
+
+Every target — regardless of type — is conditional on three things: a minimum sample size of N≥30 by default, a per-tenant baseline rather than a global average, and the current maturity stage of the system.
 
 ---
 
@@ -71,64 +103,357 @@ This reframe exposes three measurement traps.
 
 ### 4.1 Dimension A — Scoring Quality
 
-*Answers: is Agent E producing meaningful, differentiated scores?*
+*This dimension answers: is Agent E producing meaningful, differentiated scores?*
 
-| ID | Metric | Tier | Definition | Target | Availability | How It Lies To You |
-|----|--------|------|------------|--------|--------------|-------------------|
-| **A1** | Bucket–Outcome Alignment Rate | 1 | % of called leads whose confirmed outcome matches bucket (HOT converts/progresses; WARM engages; COLD goes nowhere). | Soft: >75% after calibration. | Month 2+ | Only reflects *called* leads. COLD unmeasured without Curiosity Budget. |
-| **A2** | HOT:COLD Conversion Ratio | **0** | conv_rate(HOT called) ÷ conv_rate(COLD called via Curiosity Budget). | Ratio: ≥ 2.5×. | Month 3+ | Small Curiosity Budget sample → wide CI. Requires ≥30 called COLDs per tenant per quarter. |
-| **A3** | Dimensional Differentiation Index | 2 | Mean σ across the 5 Agent E sub-scores (Fit / Intent / Engagement / Behavioral / Context). | Soft: σ ≥ 1.5 on 10-pt scale. | Day 0 | LLM may produce templated artificial variance. Cross-check with A4. |
-| **A4** | Cross-Tenant Divergence | 2 | Synthetic test leads run through all 3 tenants. % producing different bucket in ≥2 tenants. | Soft: ≥ 60%. | Day 0 (needs test harness) | Test corpus too generic/extreme → artificial result. Must probe persona differences carefully. |
-| **A5** | Wrong-Bucket Rate (directional) | 1 | Split into: **false alarm** (HOT that should be cold) and **missed opportunity** (COLD that should be hot). | Soft: false alarm <15%; missed <10%. | Week 4+ | Missed opportunities are silent — only Curiosity Budget catches them. |
+---
 
-### 4.2 Dimension B — Accuracy Proxy (pre-conversion leading indicators)
+**A1 — Bucket–Outcome Alignment Rate**
+Tier 1
 
-*Answers: before conversion data arrives, can we detect quality issues?*
+**Definition:** The percentage of called leads whose confirmed real-world outcome matched the bucket they were assigned. HOT leads should convert or progress. WARM leads should engage. COLD leads should go nowhere.
 
-| ID | Metric | Tier | Definition | Target | Availability | How It Lies To You |
-|----|--------|------|------------|--------|--------------|-------------------|
-| **B1** | Confidence Calibration Error (ECE) | 1 | Weighted avg of \|predicted_confidence − actual_outcome_rate\| across confidence bins. Plot as reliability diagram. | Soft: ECE < 0.10; line within ±10% of diagonal. | Month 2+ | Small samples in high-confidence bins → noisy. Needs ≥100 resolved leads per tenant before trusting the diagram. |
-| **B2** | Confidence Distribution Shape | 1 | % of leads in each band (≥80%, 50–79%, <50%) per tenant. | Soft: <30% in <50% band; >50% in ≥80% band after calibration. | Day 0 | LLM self-report clusters at round numbers (80%). Look at shape, not averages. |
-| **B3** | Completeness Tier Mix | 2 | % leads reaching Agent E as Complete / Partial / Sparse (Agent C classification). | Soft: >60% Complete; <20% Sparse. | Day 0 | "Complete" = field presence, not truthfulness. Populated lead with wrong phone still looks Complete. |
-| **B4** | Explanation–Outcome Decoupling | 2 | For converted leads: does salesperson's stated reason match any of Agent E's 3 key reasons? | Soft: ≥ 50% match. | Month 2+ | Post-hoc rationalization. Capture salesperson reason *before* they see Agent E's reasons. |
-| **B5** | Shadow Re-run Disagreement Rate | 2 | Re-run 2–5% of leads through a second LLM (different provider). % bucket disagreement. | Soft: <20%; alert sustained >30%. | Day 0 (needs infra) / Month 2 otherwise | Two models can agree for wrong reasons. Triangulate with human reviewer audit. |
+**Target:** Soft — above 75% after calibration.
+
+**Available from:** Month 2 onwards.
+
+**How it can mislead you:** This metric only reflects leads that were actually called. COLD leads are entirely unmeasured unless the Curiosity Budget is active. Without it, the metric looks complete but is structurally blind on one side.
+
+---
+
+**A2 — HOT:COLD Conversion Ratio**
+Tier 0 (North Star)
+
+**Definition:** The conversion rate of HOT leads that were called, divided by the conversion rate of COLD leads that were called via the Curiosity Budget. This ratio tells you whether the scoring has real signal — whether being marked HOT actually means something.
+
+**Target:** Ratio — at least 2.5 times.
+
+**Available from:** Month 3 onwards.
+
+**How it can mislead you:** If the Curiosity Budget sample is small, the confidence interval around the COLD conversion rate will be very wide and the ratio will be unreliable. You need at least 30 called COLD leads per tenant per quarter before this number is trustworthy.
+
+---
+
+**A3 — Dimensional Differentiation Index**
+Tier 2
+
+**Definition:** The mean standard deviation across the 5 Agent E sub-scores — Fit, Intent, Engagement, Behavioral, and Context — measured on a 10-point scale. This checks whether Agent E is actually spreading scores out or clustering them at the same value.
+
+**Target:** Soft — standard deviation of at least 1.5 on a 10-point scale.
+
+**Available from:** Day 0.
+
+**How it can mislead you:** The LLM may produce artificial variance that looks mathematically spread but is not semantically meaningful. Cross-check against A4 to see if the differentiation holds across different tenants.
+
+---
+
+**A4 — Cross-Tenant Divergence**
+Tier 2
+
+**Definition:** A set of identical synthetic test leads run through all 3 tenants. The metric measures what percentage of those leads produce a different bucket in at least 2 of the 3 tenants. This validates that different personas actually produce different scoring behaviour.
+
+**Target:** Soft — at least 60% divergence.
+
+**Available from:** Day 0, but requires a test harness to be built first.
+
+**How it can mislead you:** If the test corpus is too generic or too extreme, it will produce artificial results. The leads used must probe the actual differences between personas carefully, not just edge cases that would flip under any reasonable configuration.
+
+---
+
+**A5 — Wrong-Bucket Rate (Directional)**
+Tier 1
+
+**Definition:** This metric is split into two halves. The first is the **false alarm rate** — HOT leads that should have been COLD. The second is the **missed opportunity rate** — COLD leads that should have been HOT. Keeping these two separate matters because they have different costs and different causes.
+
+**Target:** Soft — false alarm below 15%; missed opportunity below 10%.
+
+**Available from:** Week 4 onwards.
+
+**How it can mislead you:** Missed opportunities are silent. They only become visible if the Curiosity Budget is active. Without it, the missed opportunity half of this metric is structurally unobservable.
+
+---
+
+### 4.2 Dimension B — Accuracy Proxy
+
+*This dimension answers: before conversion data arrives, can we detect quality issues?*
+
+---
+
+**B1 — Confidence Calibration Error (ECE)**
+Tier 1
+
+**Definition:** The weighted average of the absolute difference between Agent E's predicted confidence and the actual observed outcome rate, across confidence bins. Plotted as a reliability diagram, this shows whether the system's confidence is honest — if it says 80% confident, does it convert at 80%?
+
+**Target:** Soft — ECE below 0.10, meaning the reliability diagram line stays within ±10% of the perfect diagonal.
+
+**Available from:** Month 2 onwards.
+
+**How it can mislead you:** Small sample sizes in high-confidence bins make the error noisy and hard to interpret. You need at least 100 resolved leads per tenant before the diagram becomes trustworthy.
+
+---
+
+**B2 — Confidence Distribution Shape**
+Tier 1
+
+**Definition:** The percentage of leads falling into each confidence band — high confidence at 80% and above, mid at 50–79%, and low below 50% — measured per tenant. This tells you whether the system is making real distinctions or defaulting to uncertainty.
+
+**Target:** Soft — less than 30% of leads in the low-confidence band; more than 50% in the high-confidence band after calibration.
+
+**Available from:** Day 0.
+
+**How it can mislead you:** LLMs tend to self-report confidence in round numbers, clustering at exactly 80%. Look at the shape of the distribution rather than the averages — the clustering pattern itself is diagnostic.
+
+---
+
+**B3 — Completeness Tier Mix**
+Tier 2
+
+**Definition:** The percentage of leads reaching Agent E classified as Complete, Partial, or Sparse by Agent C. This tells you the quality of the input data Agent E is working with.
+
+**Target:** Soft — more than 60% Complete; fewer than 20% Sparse.
+
+**Available from:** Day 0.
+
+**How it can mislead you:** "Complete" in this context means field presence, not truthfulness. A lead with a wrong phone number but all fields filled still looks Complete to this metric. Data quality is confirmed structurally, not semantically.
+
+---
+
+**B4 — Explanation–Outcome Decoupling**
+Tier 2
+
+**Definition:** For leads that actually converted, this checks whether the salesperson's stated reason for conversion matches any of Agent E's three key reasons given in the explanation. It tests whether the system's explanations are actually connected to reality or are post-hoc rationalizations.
+
+**Target:** Soft — at least 50% match.
+
+**Available from:** Month 2 onwards.
+
+**How it can mislead you:** There is a strong post-hoc rationalization risk. The salesperson's stated reason must be captured *before* they see Agent E's reasons, otherwise they will unconsciously align their answer to the system's explanation.
+
+---
+
+**B5 — Shadow Re-run Disagreement Rate**
+Tier 2
+
+**Definition:** 2 to 5% of leads are re-run through a second LLM from a different provider. The metric measures what percentage of those re-runs produce a different bucket than the original run.
+
+**Target:** Soft — below 20% disagreement; an alert fires if it sustains above 30%.
+
+**Available from:** Day 0 if shadow infrastructure is shipped; otherwise Month 2.
+
+**How it can mislead you:** Two different models can agree on the same wrong answer for different reasons. This metric should be triangulated with human reviewer audits, not treated as a standalone accuracy signal.
+
+---
 
 ### 4.3 Dimension C — Consistency
 
-*Answers: is the system stable and predictable enough to trust?*
+*This dimension answers: is the system stable and predictable enough to trust?*
 
-| ID | Metric | Tier | Definition | Target | Availability | How It Lies To You |
-|----|--------|------|------------|--------|--------------|-------------------|
-| **C1** | Cross-Run Variance | 1 | Same lead submitted twice, same prompt version. Measure score delta. | Hard: bucket never flips. Soft: ≤5 pt variance 95% of time. | Day 0 | Provider non-determinism at T=0 (batching quirks) measures provider, not system. |
-| **C2** | Prompt Version Logged | 3 | % of leads with non-null `prompt_version` in lineage log. | Hard: 100%. | Day 0 | Autopopulation can fake this. Audit occasionally against prompt hash. |
-| **C3** | Distribution Drift Detection | 1 | Week-over-week KL divergence of bucket distribution per tenant. | Alert threshold: KL > 0.15 with no prompt/persona/source change. | Week 2+ | Seasonality looks like drift in early months. Use noise-aware thresholds. Catches silent LLM model updates from provider. |
-| **C4** | Baseline Anchor Test | 3 | 10 canonical test leads run daily through production. Compare to historical distribution. | Hard: 10/10 within tolerance. | Day 0 | Anchor corpus must be maintained; stale corpus = stale signal. |
-| **C5** | Decay Determinism | 3 | Score changes for inactive leads must match locked decay formula exactly. | Hard: 100% match. | Day 30+ | If decay and feedback adjustments run on the same field, deviations may come from feedback, not decay bug. Log field separately. |
+---
+
+**C1 — Cross-Run Variance**
+Tier 1
+
+**Definition:** The same lead is submitted twice with the same prompt version. The metric measures the score delta between the two runs. The bucket must never flip between runs.
+
+**Target:** Hard — bucket never flips. Soft — score variance of no more than 5 points, 95% of the time.
+
+**Available from:** Day 0.
+
+**How it can mislead you:** LLM provider non-determinism — especially batching quirks at T=0 — can cause variance that reflects the provider's infrastructure rather than the system's design. Early results measure provider stability as much as system stability.
+
+---
+
+**C2 — Prompt Version Logged**
+Tier 3
+
+**Definition:** The percentage of leads that have a non-null `prompt_version` field in the lineage log. This is a hygiene metric that makes every other consistency metric interpretable — if you don't know which prompt version scored a lead, you can't diagnose regressions.
+
+**Target:** Hard — 100%.
+
+**Available from:** Day 0.
+
+**How it can mislead you:** Auto-population logic can make this metric look 100% while actually writing incorrect or stale prompt versions. Audit occasionally by comparing the logged value against the actual prompt hash.
+
+---
+
+**C3 — Distribution Drift Detection**
+Tier 1
+
+**Definition:** Week-over-week KL divergence of the bucket distribution per tenant. This detects when the overall shape of how leads are being scored shifts significantly, without any intentional change to prompts, personas, or data sources.
+
+**Target:** Alert threshold — KL divergence above 0.15 with no corresponding prompt, persona, or source change should trigger an investigation.
+
+**Available from:** Week 2 onwards.
+
+**How it can mislead you:** In the early months, normal seasonality in lead data can look indistinguishable from drift. Use noise-aware thresholds that account for expected variation. This metric is particularly valuable for catching silent model updates pushed by the LLM provider.
+
+---
+
+**C4 — Baseline Anchor Test**
+Tier 3
+
+**Definition:** 10 canonical test leads run through production every day. Their scores and buckets are compared against their historical distribution. If they move, something in the system has changed — intentionally or not.
+
+**Target:** Hard — all 10 leads must stay within tolerance.
+
+**Available from:** Day 0.
+
+**How it can mislead you:** The anchor corpus must be maintained and refreshed. A stale corpus — leads that no longer represent the real distribution of inputs — produces a stale signal that misses genuine regressions while giving a false sense of stability.
+
+---
+
+**C5 — Decay Determinism**
+Tier 3
+
+**Definition:** Score changes for inactive leads must match the locked decay formula exactly, with zero exceptions.
+
+**Target:** Hard — 100% match.
+
+**Available from:** Day 30 onwards.
+
+**How it can mislead you:** If the decay calculation and feedback-based adjustments operate on the same score field, deviations from the expected decay may be caused by feedback logic rather than a decay bug. Log each mechanism in a separate field so deviations can be diagnosed correctly.
+
+---
 
 ### 4.4 Dimension D — Action Relevance
 
-*Answers: is the scoring actually changing behavior?*
+*This dimension answers: is the scoring actually changing salesperson behavior?*
 
-| ID | Metric | Tier | Definition | Target | Availability | How It Lies To You |
-|----|--------|------|------------|--------|--------------|-------------------|
-| **D1** | HOT SLA Compliance Rate | 1 | % of HOT leads contacted within 24h. | Soft: >70% M1; >85% M3+. | Day 0 | "Contacted" may be auto-logged without genuine contact. Audit contact content sample. |
-| **D2** | Action Distribution Ratio | 1 | HOT call rate ÷ COLD call rate. | Ratio: ≥ 3:1. | Day 0+ | Hardest signal that scoring changes behavior vs. being politely ignored. |
-| **D3** | Feedback Rate & Quality | 1 | (a) % leads with any feedback tag; (b) % verdicts with reason tag. | (a) Alert: <20%. Soft: >40%. (b) Soft: >60%. | Week 1+ | Thumbs-spam (habit clicking). Catch via reviewer audit + low reason-tag rate. |
-| **D4** | Suggested Action Acceptance | 2 | % of leads where salesperson took Agent E's suggested action (call/WhatsApp/email/nurture). | Soft: >50% (below 20% = drop the feature). | Month 1+ | High acceptance may just mean salesperson does default action regardless of suggestion. |
-| **D5** | Per-Salesperson Conversion Lift | **0** | Conversion rate per salesperson pre-launch vs post-launch. | Soft: median +20%; bottom quartile non-negative. | Month 3+ | Confounded by market changes, team growth. Mitigate via rolling cohort analysis. |
+---
 
-### 4.5 Dimension M — Meta (metrics about the measurement system itself)
+**D1 — HOT SLA Compliance Rate**
+Tier 1
 
-*If these break, everything above is unreliable.*
+**Definition:** The percentage of HOT leads that were contacted within 24 hours of being assigned. This measures whether the urgency signal embedded in HOT classification is actually translating into faster response.
 
-| ID | Metric | Tier | Definition | Target | Availability |
-|----|--------|------|------------|--------|--------------|
-| **M1** | Lineage Log Completeness | 3 | % of leads with complete per-step lineage entries. | Hard: 100% (non-negotiable per locked rule). | Day 0 |
-| **M2** | Feedback Honesty Audit | 3 | Quarterly human check: does feedback tag match CRM outcome? | Soft: ≥ 85% alignment. | Month 2+ |
-| **M3** | Reviewer Agreement Ceiling | 2 | Human reviewer agreement rate with Agent E. | Alert: >95% = rubber-stamping. | Month 1+ |
-| **M4** | Sample-Size Sufficiency Flag | 3 | Each metric reports its CI; metrics below N<30 are marked "insufficient data." | Hard: no alerts fire below N threshold. | Day 0 |
-| **M5** | Tenant Data Isolation Audit | 3 | Cross-tenant signal leakage. | Hard: 0 instances. | Day 0 |
-| **M6** | PII Retention Compliance | 3 | % of log entries past retention window that are scrubbed. | Hard: 100%. | Month 1+ |
+**Target:** Soft — above 70% in Month 1; above 85% from Month 3 onwards.
+
+**Available from:** Day 0.
+
+**How it can mislead you:** "Contacted" may be auto-logged by a CRM action without genuine human contact occurring. Audit a sample of contact records to verify the content was real outreach, not a system-generated log entry.
+
+---
+
+**D2 — Action Distribution Ratio**
+Tier 1
+
+**Definition:** The call rate for HOT leads divided by the call rate for COLD leads. This is the hardest available signal that scoring is actually influencing how salespeople allocate their time, rather than being politely acknowledged and then ignored.
+
+**Target:** Ratio — at least 3:1.
+
+**Available from:** Day 0 onwards.
+
+**How it can mislead you:** This metric does not distinguish between scoring driving the behavior change or pre-existing salesperson intuition aligning with the score. Use alongside D5 for a fuller picture.
+
+---
+
+**D3 — Feedback Rate and Quality**
+Tier 1
+
+**Definition:** This metric has two parts. Part A is the percentage of leads that received any feedback tag from a salesperson. Part B is the percentage of verdicts that included a reason tag, not just a thumbs-up or thumbs-down. Both parts matter — volume tells you the system is being used, and reason tags tell you the feedback is informative.
+
+**Target:** Part A — alert threshold below 20%; soft target above 40%. Part B — soft target above 60%.
+
+**Available from:** Week 1 onwards.
+
+**How it can mislead you:** High feedback volume can be driven by habit-clicking — salespeople reflexively tagging everything without genuine evaluation. Catch this by monitoring how low the reason-tag rate is and by conducting periodic reviewer audits.
+
+---
+
+**D4 — Suggested Action Acceptance**
+Tier 2
+
+**Definition:** The percentage of leads where the salesperson took the specific action that Agent E suggested — whether that was a call, a WhatsApp message, an email, or a nurture sequence.
+
+**Target:** Soft — above 50%. If it drops below 20%, the suggested action feature should be reconsidered.
+
+**Available from:** Month 1 onwards.
+
+**How it can mislead you:** High acceptance may simply reflect the fact that salespeople default to whichever action is easiest or most habitual, regardless of what Agent E recommended. The metric cannot distinguish genuine acceptance from coincidental alignment.
+
+---
+
+**D5 — Per-Salesperson Conversion Lift**
+Tier 0 (North Star)
+
+**Definition:** Each salesperson's conversion rate compared before and after launch. The goal is to see a measurable positive shift in the median salesperson, with no regression in the bottom quartile.
+
+**Target:** Soft — median lift of at least +20%; bottom quartile must stay non-negative.
+
+**Available from:** Month 3 onwards.
+
+**How it can mislead you:** This metric is heavily confounded by market changes, team growth, seasonality, and individual skill development that happen to coincide with launch. Mitigate by using rolling cohort analysis rather than a single pre/post comparison.
+
+---
+
+### 4.5 Dimension M — Meta Metrics
+
+*If these metrics break, everything above becomes unreliable.*
+
+---
+
+**M1 — Lineage Log Completeness**
+Tier 3
+
+**Definition:** The percentage of leads with complete per-step lineage entries in the log. This is a non-negotiable hard dependency. Without full lineage, no other metric can be diagnosed when it moves unexpectedly.
+
+**Target:** Hard — 100%.
+
+**Available from:** Day 0.
+
+---
+
+**M2 — Feedback Honesty Audit**
+Tier 3
+
+**Definition:** A quarterly human review that checks whether the feedback tags applied by salespeople actually align with the CRM-recorded outcomes for those leads. This tests whether the feedback signal the system is receiving is honest or systematically biased.
+
+**Target:** Soft — at least 85% alignment.
+
+**Available from:** Month 2 onwards.
+
+---
+
+**M3 — Reviewer Agreement Ceiling**
+Tier 2
+
+**Definition:** The rate at which human reviewers agree with Agent E's bucket assignment. Counterintuitively, this metric is an alert when the agreement rate is *too high* — above 95% is a signal that reviewers are rubber-stamping rather than genuinely evaluating.
+
+**Target:** Alert threshold — above 95% is a red flag.
+
+**Available from:** Month 1 onwards.
+
+---
+
+**M4 — Sample-Size Sufficiency Flag**
+Tier 3
+
+**Definition:** Every metric must report its confidence interval alongside its value. Any metric whose sample size falls below N=30 is automatically marked "insufficient data" and must not trigger alerts until the threshold is crossed.
+
+**Target:** Hard — no alerts fire below the N threshold.
+
+**Available from:** Day 0.
+
+---
+
+**M5 — Tenant Data Isolation Audit**
+Tier 3
+
+**Definition:** A check for any cross-tenant signal leakage — any case where data from one tenant's leads influences the scoring of another tenant's leads.
+
+**Target:** Hard — zero instances.
+
+**Available from:** Day 0.
+
+---
+
+**M6 — PII Retention Compliance**
+Tier 3
+
+**Definition:** The percentage of log entries that are past their retention window and have been correctly scrubbed of personally identifiable information.
+
+**Target:** Hard — 100%.
+
+**Available from:** Month 1 onwards.
 
 ---
 
@@ -136,142 +461,293 @@ This reframe exposes three measurement traps.
 
 ### 5.1 Cold Start
 
-| # | Scenario | Impact | Mitigation Metric / Rule |
-|---|----------|--------|-------------------------|
-| 1 | New tenant, no history | No baseline for lift metrics (D5) for 90 days | Use absolute targets first (HOT ≥ X% of book); relative targets after baseline stabilizes. |
-| 2 | New source channel mid-quarter | Pollutes distribution trend | Tag metrics with `source_activated_at`; exclude first 2 weeks from trend calcs. |
-| 3 | Persona just updated | Performance discontinuity | Include `persona_version` in every metric. Break series explicitly — never smooth across a persona change. |
+**Scenario 1 — New tenant with no history**
+
+When a new tenant is onboarded with no prior conversion history, the relative lift metrics — especially D5 — cannot be calculated for at least 90 days. The mitigation is to use absolute targets first, such as "HOT leads account for at least X% of the book." Switch to relative targets only after the baseline stabilises.
+
+**Scenario 2 — New source channel activated mid-quarter**
+
+Adding a new lead source mid-quarter pollutes distribution trend metrics because the new channel's behaviour is mixed into the existing trend. The mitigation is to tag all metrics with `source_activated_at` and exclude the first two weeks of data from that source from any trend calculations.
+
+**Scenario 3 — Persona update mid-period**
+
+When a persona is updated, it creates a performance discontinuity in the time series. Every metric must include `persona_version` as a field. When a persona changes, the series must be explicitly broken — never smooth across a persona change as if it is continuous data.
 
 ### 5.2 Feedback Reliability
 
-| # | Scenario | Impact | Mitigation |
-|---|----------|--------|------------|
-| 4 | Salesperson marks everything "wrong bucket" (venting) | False negative spike | Per-user verdict diversity metric. Audit users where >80% of verdicts are the same tag. |
-| 5 | Salesperson marks everything "converted" (perverse incentive) | False accuracy inflation | Cross-check against CRM conversion record. |
-| 6 | Two salespeople disagree on same lead | Ambiguous verdict | Policy decision needed (see Section 7, D5). Store both or pick canonical. |
-| 7 | One heavy user dominates feedback volume | Skewed tenant metrics | Cap per-user contribution to aggregate metrics. |
+**Scenario 4 — Salesperson marks everything "wrong bucket" out of frustration**
+
+This creates a false negative spike in feedback quality. Detect this with a per-user verdict diversity metric. Any user where more than 80% of their verdicts carry the same tag should be flagged for an audit.
+
+**Scenario 5 — Salesperson marks everything "converted" due to perverse incentive**
+
+This inflates apparent accuracy. Cross-check all feedback-based accuracy metrics against CRM conversion records as the authoritative source.
+
+**Scenario 6 — Two salespeople disagree on the same lead**
+
+This produces an ambiguous verdict. A policy decision is required (see Section 7, Decision 5): either most-recent-wins, highest-role-wins, or store both. One option must be chosen and documented in the schema before launch.
+
+**Scenario 7 — One heavy user dominates feedback volume**
+
+This skews per-tenant aggregate metrics toward that user's patterns. Mitigate by capping each individual user's contribution to the aggregate metric at a defined percentage.
 
 ### 5.3 Sales Cycle Length
 
-| # | Scenario | Impact | Mitigation |
-|---|----------|--------|------------|
-| 8 | Gamoft B2B cycles = 90–180 days | "Did HOT convert?" unanswerable for 6 months | Milestone-based proxy outcomes (meeting → proposal → contract). Each is a mini-conversion. |
-| 9 | Urvee B2C cycles = hours | HOT should convert same-day | SLA framework implicitly tenant-dependent. |
+**Scenario 8 — Gamoft B2B cycles of 90–180 days**
 
-### 5.4 LLM Behavior
+The question "did this HOT lead convert?" cannot be answered for 6 months, which makes standard conversion metrics useless in the short term. The mitigation is to define milestone-based proxy outcomes — meeting booked, proposal submitted, contract signed — where each milestone counts as a mini-conversion for metric purposes.
 
-| # | Scenario | Impact | Mitigation |
-|---|----------|--------|------------|
-| 10 | Malformed JSON from Agent E | Lead has no bucket | Explicit `agent_error` status; track rate; hard target <1%. |
-| 11 | Agent E hallucinates a signal | Fake explanation → wrong action | Audit 5% of explanations against raw source. Escalate if hallucination rate >5%. |
-| 12 | Token limit truncation | Silent context loss | Log input token count; correlate with outcome quality; near-limit leads should show degraded accuracy. |
-| 13 | Provider model silently updated | Score behavior changes | Baseline Anchor Test (C4) catches this. |
-| 14 | T=0 non-determinism | Same input → different score | Cross-Run Variance (C1) alerts. |
+**Scenario 9 — Urvee B2C cycles of hours**
+
+HOT leads for Urvee should convert the same day. The SLA framework is implicitly tenant-dependent and must be configured separately per tenant, not treated as a single universal setting.
+
+### 5.4 LLM Behaviour
+
+**Scenario 10 — Malformed JSON from Agent E**
+
+When Agent E returns malformed output, the lead has no bucket and cannot be scored. The mitigation is an explicit `agent_error` status. Track the rate of this status. The hard target is below 1%.
+
+**Scenario 11 — Agent E hallucinates a signal**
+
+A fabricated explanation leads to a wrong action recommendation. Mitigate by auditing 5% of explanations against the raw source data. Escalate to engineering review if the hallucination rate exceeds 5%.
+
+**Scenario 12 — Token limit truncation**
+
+When the input to Agent E approaches the token limit, context is silently dropped. Log the input token count for every lead. Correlate near-limit leads with outcome quality to determine whether truncation is causing degraded accuracy.
+
+**Scenario 13 — Provider silently updates their model**
+
+The LLM provider may update the underlying model without notice, causing score behaviour to shift without any change on our side. The Baseline Anchor Test (C4) is the primary mechanism for detecting this.
+
+**Scenario 14 — T=0 non-determinism**
+
+The same input submitted at the same time may produce slightly different scores due to LLM sampling randomness. The Cross-Run Variance metric (C1) alerts when this produces a bucket flip.
 
 ### 5.5 Operational
 
-| # | Scenario | Impact | Mitigation |
-|---|----------|--------|------------|
-| 15 | Rate limit exhausted mid-run | Partial results | Separate `incomplete_fetch` bucket in metrics. Never average into clean runs. |
-| 16 | API auth token expired | Pipeline halt | Pipeline completion rate metric; alert on halts. |
-| 17 | Dedup merged distinct people (shared phone) | Wrong person scored | Feedback flag "this isn't the expected person" → dedup audit. |
+**Scenario 15 — Rate limit exhausted mid-run**
+
+When a pipeline run is interrupted by rate limiting, partial results should be placed in a separate `incomplete_fetch` bucket. Never average incomplete results into clean runs — the two populations are not comparable.
+
+**Scenario 16 — API auth token expired**
+
+A halted pipeline produces no results. Track pipeline completion rate as an explicit metric and alert on halts immediately.
+
+**Scenario 17 — Deduplication merged two distinct people sharing a phone number**
+
+If two different people were merged into one lead record, the scoring is applied to the wrong person. Add a feedback option for salespeople to flag "this isn't the expected person" and route those flags to a dedup audit queue.
 
 ### 5.6 Statistical
 
-| # | Scenario | Impact | Mitigation |
-|---|----------|--------|------------|
-| 18 | Simpson's paradox | Global looks good, per-tenant bad | Rule: never report global without per-tenant + cross-tenant variance. |
-| 19 | Small-sample false alarms | Alert fatigue | Wilson confidence intervals; suppress alerts below N=30. |
-| 20 | Multiple-testing fallacy | 30 KPIs → 1.5 false alarms/week | Bonferroni correction or accept higher per-metric thresholds. |
+**Scenario 18 — Simpson's Paradox**
+
+A metric can look good at the global level while being bad for every individual tenant, if the tenant mix is skewed. The rule is: never report global metrics without per-tenant breakdowns and cross-tenant variance alongside them.
+
+**Scenario 19 — Small-sample false alarms**
+
+With small sample sizes, random variation produces alerts for metrics that are actually healthy. Use Wilson confidence intervals for all proportions. Suppress alerts automatically below N=30.
+
+**Scenario 20 — Multiple-testing fallacy**
+
+With 30 KPIs, statistical chance alone will produce roughly 1.5 false alarms per week at a 5% significance level. Apply Bonferroni correction, or explicitly accept higher per-metric thresholds to account for multiple comparisons.
 
 ### 5.7 Adversarial
 
-| # | Scenario | Impact | Mitigation |
-|---|----------|--------|------------|
-| 21 | Lead source poisoning | Skewed metrics | Anomaly detection on source volume. |
-| 22 | Reviewer rubber-stamping | False reviewer agreement | Inject occasional synthetic "wrong Agent E" outputs; reviewer should catch them (M3 above). |
-| 23 | Tenant admin gaming persona | Artificial HOT inflation | Rate-limit persona updates; audit all changes. |
+**Scenario 21 — Lead source poisoning**
+
+A compromised or manipulated lead source can skew metrics in a way that looks like system improvement. Apply anomaly detection on source volume to catch unusual spikes in lead quantity from a single source.
+
+**Scenario 22 — Reviewer rubber-stamping**
+
+If reviewers agree with Agent E reflexively rather than genuinely, the M3 reviewer agreement metric becomes meaningless. Inject occasional synthetic leads where Agent E is known to be wrong. Reviewers should catch these injections.
+
+**Scenario 23 — Tenant admin gaming the persona**
+
+A tenant admin could artificially inflate HOT counts by making the persona extremely permissive. Mitigate by rate-limiting persona updates and auditing all persona changes for unusual bucket distribution shifts.
 
 ### 5.8 Causal
 
-| # | Scenario | Impact | Mitigation |
-|---|----------|--------|------------|
-| 24 | "Would have converted anyway" | System gets undeserved credit | A/B hold-out or pre/post + propensity matching. Build comparison infra early. |
-| 25 | Salesperson skill drift | Confounds D5 | Rolling quarterly baselines, not a single pre-launch baseline. |
+**Scenario 24 — "Would have converted anyway"**
+
+The system may receive credit for conversions that would have happened without it. Build comparison infrastructure early — either an A/B hold-out group or a propensity-matched pre/post comparison.
+
+**Scenario 25 — Salesperson skill drift**
+
+Salespeople improve over time independently of the system. If you compare against a single pre-launch baseline, this improvement gets attributed to the system. Use rolling quarterly baselines so the comparison window stays current.
 
 ---
 
 ## 6. Temporal Rollout Plan
 
-*When each metric becomes measurable.*
+*When each metric becomes meaningfully measurable.*
 
-| Phase | Available Metrics |
-|-------|------------------|
-| **Day 0 (POC launch)** | A3, A4 (if harness built), B2, B3, C1, C2, C4, C5, D1, D2, M1, M4, M5 |
-| **Week 1–4** | A5 (early feedback), B5 (if shadow infra shipped), C3, D3, D4 |
-| **Month 2–3** | A1, B1 (ECE), B4, D5 (needs pre-launch baseline), M2, M3, M6 |
-| **Month 3+** | **A2** (requires Curiosity Budget — the Tier 0 metric) |
-| **Month 6+** (post-adaptive layer) | Signal-level integrity metrics from deferred [[concepts/adaptive-signal-lifecycle]] |
+**Day 0 — POC Launch**
 
----
+The following metrics are available from the moment the system goes live: A3 (Dimensional Differentiation Index), A4 (Cross-Tenant Divergence, if the test harness is built), B2 (Confidence Distribution Shape), B3 (Completeness Tier Mix), C1 (Cross-Run Variance), C2 (Prompt Version Logged), C4 (Baseline Anchor Test), C5 (Decay Determinism), D1 (HOT SLA Compliance Rate), D2 (Action Distribution Ratio), M1 (Lineage Log Completeness), M4 (Sample-Size Sufficiency Flag), and M5 (Tenant Data Isolation Audit).
 
-## 7. Decisions Required (open questions)
+**Week 1 to Week 4**
 
-*Blockers before any of this ships. Resolve each in a dedicated ticket.*
+As early feedback data accumulates, the following become available: A5 (Wrong-Bucket Rate, directional), B5 (Shadow Re-run Disagreement Rate, if shadow infrastructure is shipped), C3 (Distribution Drift Detection), D3 (Feedback Rate and Quality), and D4 (Suggested Action Acceptance).
 
-| # | Decision | Depends Metrics | Recommendation |
-|---|----------|-----------------|----------------|
-| 1 | Confidence calculation method (self-report / completeness / hybrid) | B1, B2, and all confidence-routing logic | **Hybrid**: `confidence = min(signal_completeness, llm_self_reported)`. Floor from data quality, ceiling from LLM judgment. |
-| 2 | Curiosity Budget adoption (5% of COLD leads called weekly) | A2 (North Star), A5 missed-opportunity | **Strong yes.** Without this the entire accuracy story is structurally blind. Cheapest item on the list — only salesperson time. |
-| 3 | Pre-launch baseline capture (per salesperson, per tenant, ≥30 days) | D5 (North Star) | **Yes**, mandatory. If skipped, no reliable lift measurement ever possible. |
-| 4 | Reporting discipline: per-tenant always, never global-only | All metrics | **Lock as a rule.** Dashboard template enforces it. |
-| 5 | Canonical verdict source on salesperson disagreement | All feedback-based metrics | Options: most-recent-wins / highest-role-wins / store-both. Pick one; document in schema. |
-| 6 | Shadow re-run budget (~5% LLM cost increase) | B5 | **Defer** to Month 3 unless silent failure is high-priority. Start without, add if A1/A5 signal quality issues. |
-| 7 | Milestone-based proxy outcomes for long B2B cycles | A1, A2 for Gamoft | Define 3–4 milestones for Gamoft (meeting booked → proposal → contract). Urvee likely doesn't need. |
-| 8 | Test harness corpus ownership (C4, A4) | C4, A4 | Assign single owner; refresh quarterly. Otherwise anchor tests rot. |
+**Month 2 to Month 3**
+
+With enough resolved leads to calculate calibration and lift: A1 (Bucket–Outcome Alignment Rate), B1 (Confidence Calibration Error), B4 (Explanation–Outcome Decoupling), D5 (Per-Salesperson Conversion Lift — requires pre-launch baseline to have been captured), M2 (Feedback Honesty Audit), M3 (Reviewer Agreement Ceiling), and M6 (PII Retention Compliance).
+
+**Month 3 and beyond**
+
+A2 (HOT:COLD Conversion Ratio) — this is the Tier 0 North Star metric and requires the Curiosity Budget to have been running for at least a full quarter to produce a reliable COLD baseline.
+
+**Month 6 and beyond — post-adaptive layer**
+
+Signal-level integrity metrics from the deferred [[concepts/adaptive-signal-lifecycle]] become relevant only once the adaptive layer is built.
 
 ---
 
-## 8. Minimum Viable Scorecard (the 7 Tier 1 metrics watched weekly)
+## 7. Decisions Required
 
-*If everything else is overwhelming, this is the operational dashboard.*
+*These are blockers. Each should be resolved in a dedicated ticket before launch.*
 
-| # | Metric ID | Dimension | Why It Makes The Short List |
-|---|-----------|-----------|-----------------------------|
-| 1 | A5 | Scoring Quality | Primary quality signal (directional split matters) |
-| 2 | B1 | Accuracy Proxy | Calibration is the feature's central promise |
-| 3 | B2 | Accuracy Proxy | Early warning for upstream data quality |
-| 4 | C1 | Consistency | Trust signal — bucket flips destroy confidence |
-| 5 | C3 | Consistency | Catches silent regressions and provider drift |
-| 6 | D2 | Action Relevance | Are users actually using the buckets? |
-| 7 | D3 | Action Relevance + Meta | Everything else depends on feedback volume |
+**Decision 1 — Confidence Calculation Method**
 
-### Tier 0 North Stars (the 2 metrics that justify the project's existence)
+The choice is between self-report from the LLM, completeness-based scoring from Agent C, or a hybrid of both.
 
-| ID | Target | Meaning |
-|----|--------|---------|
-| **A2** HOT:COLD Conversion Ratio | ≥ 2.5× | Proves the scoring has real signal |
-| **D5** Per-Salesperson Conversion Lift | ≥ +20% median | Proves the scoring actually drives behavior |
+This affects: B1, B2, and all confidence-routing logic.
 
-Everything else is diagnostic in service of these two.
+Recommendation: Use the hybrid. Set `confidence = min(signal_completeness, llm_self_reported)`. The completeness score provides the floor based on data quality. The LLM self-report provides the ceiling. Neither alone is sufficient.
+
+---
+
+**Decision 2 — Curiosity Budget Adoption**
+
+Should we mandate calling 5% of COLD leads every week?
+
+This affects: A2 (North Star) and the missed-opportunity half of A5.
+
+Recommendation: Strong yes. Without the Curiosity Budget, the entire accuracy story is structurally blind on the COLD side. This is the cheapest item on the list — it costs only salesperson time, not engineering effort.
+
+---
+
+**Decision 3 — Pre-Launch Baseline Capture**
+
+Should we capture a per-salesperson, per-tenant conversion baseline covering at least 30 days before launch?
+
+This affects: D5 (North Star).
+
+Recommendation: Yes, mandatory. If this is skipped, reliable lift measurement is never possible — there is no way to retroactively construct the baseline after launch.
+
+---
+
+**Decision 4 — Per-Tenant Reporting Discipline**
+
+Should global metrics be locked out in favour of always showing per-tenant breakdowns?
+
+This affects: all metrics.
+
+Recommendation: Lock this as a rule. The dashboard template should enforce it structurally so that global-only views are not possible by default.
+
+---
+
+**Decision 5 — Canonical Verdict on Salesperson Disagreement**
+
+When two salespeople give conflicting feedback on the same lead, which verdict wins?
+
+This affects: all feedback-based metrics.
+
+Options are most-recent-wins, highest-role-wins, or store both verdicts separately. One option must be chosen before launch and documented in the schema.
+
+---
+
+**Decision 6 — Shadow Re-run Budget**
+
+Is the approximately 5% increase in LLM costs from running shadow re-runs worth the cross-validation signal?
+
+This affects: B5.
+
+Recommendation: Defer to Month 3 unless silent failure is considered high-priority. Start without it. Add it only if A1 or A5 indicate quality problems that need a second opinion.
+
+---
+
+**Decision 7 — Milestone-Based Proxy Outcomes for Gamoft**
+
+Gamoft's B2B sales cycles of 90–180 days make standard conversion metrics unmeasurable in the short term. Should we define milestone proxies?
+
+This affects: A1, A2 specifically for the Gamoft tenant.
+
+Recommendation: Yes. Define 3 to 4 milestones for Gamoft — for example, meeting booked, proposal sent, contract signed. Urvee's short B2C cycles likely do not need this.
+
+---
+
+**Decision 8 — Test Harness Corpus Ownership**
+
+Who owns the canonical test corpus used by C4 and A4, and who is responsible for refreshing it quarterly?
+
+This affects: C4 (Baseline Anchor Test) and A4 (Cross-Tenant Divergence).
+
+Recommendation: Assign a single named owner before launch. Without ownership, anchor tests will rot and begin producing stale, misleading stability signals.
+
+---
+
+## 8. Minimum Viable Scorecard
+
+*If the full framework is overwhelming, these are the 7 Tier 1 metrics to watch weekly.*
+
+**1 — A5 (Wrong-Bucket Rate)**
+Dimension: Scoring Quality.
+This is the primary quality signal. The directional split between false alarms and missed opportunities matters — they point to different problems and require different fixes.
+
+**2 — B1 (Confidence Calibration Error)**
+Dimension: Accuracy Proxy.
+Calibration is the central promise of the product. If the confidence numbers are dishonest, every downstream decision built on them is unreliable.
+
+**3 — B2 (Confidence Distribution Shape)**
+Dimension: Accuracy Proxy.
+This is an early warning system for upstream data quality. If the distribution collapses toward low-confidence, something in Agent C's input pipeline has changed.
+
+**4 — C1 (Cross-Run Variance)**
+Dimension: Consistency.
+This is the trust signal. A single bucket flip on re-submission destroys salesperson confidence in the system more than almost any other failure mode.
+
+**5 — C3 (Distribution Drift Detection)**
+Dimension: Consistency.
+This catches silent regressions — LLM provider updates, persona drift, data source changes — that have no obvious trigger. It is the canary in the coal mine.
+
+**6 — D2 (Action Distribution Ratio)**
+Dimension: Action Relevance.
+This is the hardest available signal that users are actually acting on the buckets. If HOT call rate is not at least 3 times COLD call rate, the scoring is being politely ignored.
+
+**7 — D3 (Feedback Rate and Quality)**
+Dimension: Action Relevance and Meta.
+Everything else depends on feedback volume. If feedback falls below 20%, the system has lost the human signal that makes calibration, audit, and improvement possible.
+
+### Tier 0 North Stars
+
+**A2 — HOT:COLD Conversion Ratio**
+Target: at least 2.5 times.
+This is the proof that the scoring has real signal — that HOT actually means something in the real world.
+
+**D5 — Per-Salesperson Conversion Lift**
+Target: median lift of at least +20%.
+This is the proof that the scoring actually changes behaviour and produces measurable business outcomes. Without this, the product has not done its job.
+
+Everything else in this framework is diagnostic in service of these two.
 
 ---
 
 ## 9. Caveats & Gaps
 
-- **Counterfactual measurement is structurally limited.** The Curiosity Budget is the best available mitigation but does not fully solve it. True recall (what did we miss in COLD?) will always be estimated, not observed.
-- **No empirical grounding yet.** All targets are defensible starting points, not validated thresholds. They should be adjusted after first quarter of production data.
-- **Adaptive layer metrics not covered.** Add-on 7 introduces per-signal integrity, lift, stability, independence. Those are deferred alongside the feature.
-- **Tenant asymmetry.** Urvee (high volume, short cycle) vs Gamoft (low volume, long cycle) will produce wildly different sample sizes. Some metrics (B1 ECE) may never reach statistical significance for Gamoft alone.
+- **Counterfactual measurement is structurally limited.** The Curiosity Budget is the best available mitigation but does not fully solve it. True recall — what did we miss in COLD? — will always be estimated, not directly observed.
+- **No empirical grounding yet.** All targets are defensible starting points, not validated thresholds. They should be revisited and adjusted after the first quarter of production data.
+- **Adaptive layer metrics not covered.** Add-on 7 introduces per-signal integrity, lift, stability, and independence metrics. Those are deferred alongside the feature itself.
+- **Tenant asymmetry.** Urvee (high volume, short cycle) and Gamoft (low volume, long cycle) will produce very different sample sizes. Some metrics — particularly B1 ECE — may never reach statistical significance for Gamoft alone.
 
 ---
 
 ## 10. Follow-up Questions
 
-- Which of the 8 decisions in Section 7 should we resolve first? (Recommendation: #2 Curiosity Budget + #3 baseline capture — both must happen *before* launch or they are structurally unrecoverable.)
-- Does Gamoft's long B2B cycle make it unsuitable for the same KPI framework as Urvee? (Possibly needs separate milestone-based scorecard.)
-- Should this framework itself be versioned and reviewed quarterly?
-- How does this framework interact with tenant-facing reporting? (Tenants likely want simpler numbers than this internal view.)
+- Which of the 8 decisions in Section 7 should be resolved first? The recommendation is Decision 2 (Curiosity Budget) and Decision 3 (baseline capture) — both must be in place before launch or they become structurally unrecoverable.
+- Does Gamoft's long B2B cycle make it unsuitable for the same KPI framework as Urvee? It may need a separate milestone-based scorecard.
+- Should this framework itself be versioned and reviewed quarterly as the system matures?
+- How does this framework interact with tenant-facing reporting? Tenants likely want simpler numbers than this internal diagnostic view.
 
 ---
 
@@ -285,7 +761,7 @@ Everything else is diagnostic in service of these two.
 - [[concepts/feedback-loop]] — D3 and M2 depend on the v1 feedback mechanism
 - [[concepts/lineage-log]] — M1 is a hard dependency of every other metric
 - [[concepts/score-decay]] — C5 validates decay determinism
-- [[concepts/action-sla]] — D1 measures SLA compliance; D2 measures SLA behavioral impact
+- [[concepts/action-sla]] — D1 measures SLA compliance; D2 measures SLA behavioural impact
 - [[concepts/disqualification-gate]] — disqualification rate stability is a diagnostic metric
 - [[concepts/persona-layer]] — A4 Cross-Tenant Divergence validates persona isolation works
 - [[concepts/lead-pipeline-architecture]] — all metrics fit within the 7-phase flow
