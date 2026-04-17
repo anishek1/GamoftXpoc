@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pandoc --version)",
+      "Bash(python -c \"import docx; print\\('python-docx available'\\)\")",
+      "Bash(python -c \"import docx\")"
+    ]
+  }
+}

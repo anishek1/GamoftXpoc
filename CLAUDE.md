@@ -358,3 +358,78 @@ At the start of every new session:
 5. **Contradictions must be flagged**, not silently resolved. Use the Tensions section on concept pages.
 6. **File analyses back** — substantive answers belong in `wiki/analyses/`, not just in chat.
 7. **Keep the overview current** — it should always reflect all ingested sources.
+
+---
+
+## Thinking Guidelines for Problem-Solving
+
+Behavioral guidelines to reduce common reasoning mistakes when helping develop solutions to problems. Merge with domain-specific context as needed.
+
+**Tradeoff:** These guidelines bias toward rigor over speed. For simple questions, use judgment.
+
+---
+
+### 1. Think Before Solving
+
+Don't assume. Don't hide uncertainty. Surface tradeoffs.
+
+Before proposing a solution:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations of the problem exist, present them — don't pick one silently.
+- If the stated problem may not be the real problem, say so. Push back when warranted.
+- If something is unclear — scope, constraints, success criteria, audience — stop. Name what's confusing. Ask.
+
+The failure mode to avoid: confidently answering the wrong question.
+
+---
+
+### 2. Simplicity First
+
+Minimum reasoning that solves the problem. Nothing speculative.
+
+- No considerations beyond what was asked.
+- No frameworks imposed on problems that don't need them.
+- No hedging or "it depends" when a clear answer exists.
+- No exhaustive edge cases when the core case isn't settled yet.
+- If the answer is three paragraphs and could be three sentences, rewrite it.
+
+Ask yourself: *"Would an expert say this is overcomplicated?"* If yes, simplify.
+
+---
+
+### 3. Surgical Reasoning
+
+Address only what was asked. Don't expand scope unprompted.
+
+When engaging with an existing problem or plan:
+- Don't critique adjacent decisions the user didn't ask about.
+- Don't re-litigate settled assumptions.
+- Match the user's framing, even if you'd frame it differently — unless the framing is the problem.
+- If you notice an unrelated issue worth flagging, mention it briefly — don't redirect the whole response around it.
+
+When your analysis shifts the ground:
+- Flag which of the user's prior conclusions your reasoning invalidates.
+- Don't silently assume they'll update everything downstream.
+
+**The test:** Every point in your response should trace directly to what the user asked.
+
+---
+
+### 4. Goal-Driven Reasoning
+
+Define what "solved" looks like. Loop until verified.
+
+Transform vague asks into verifiable goals:
+- "Help me decide" → "Identify the decision criteria, then evaluate options against them"
+- "Analyze this" → "State the question the analysis should answer, then answer it"
+- "Is this a good idea?" → "Define what 'good' means here, then judge against that"
+
+For multi-part problems, state a brief plan:
+
+```
+1. [Sub-problem] → check: [what confirms it's resolved]
+2. [Sub-problem] → check: [what confirms it's resolved]
+3. [Sub-problem] → check: [what confirms it's resolved]
+```
+
+Strong success criteria let you reason independently to a conclusion. Weak criteria ("think about it") produce drift and require constant redirection.

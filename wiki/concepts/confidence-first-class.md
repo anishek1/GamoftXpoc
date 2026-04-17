@@ -4,7 +4,9 @@ name: "Confidence as First-Class Field"
 aliases: ["Add-on 3", "confidence score", "confidence routing"]
 tags: [scoring, confidence, ux, add-on-3, human-in-the-loop]
 source_count: 1
-last_updated: 2026-04-14
+last_updated: 2026-04-17
+confidence: low
+status: UNDER REVIEW — calculation method not locked, see analyses/confidence-scoring-brainstorm
 ---
 
 # Confidence as First-Class Field
@@ -30,10 +32,19 @@ Example: "Score: 85 | Confidence: 72% — review recommended"
 
 ## How Confidence Is Calculated
 
-`[TBD]` — three candidates under consideration:
-1. Self-reported by Agent E (LLM states its own confidence)
-2. Derived from signal completeness (sparse data = low confidence)
-3. Hybrid of both
+`[UNDER REVIEW — 2026-04-17]` See full brainstorm: [[analyses/confidence-scoring-brainstorm]]
+
+**Previous decision (2026-04-16):** Confidence derived from enrichment score threshold. This has been challenged.
+
+**Problem identified:** Enrichment-based confidence is circular. If missing signals already contribute 0 to the enrichment score, then confidence and enrichment score move in the same direction always — confidence adds no new information.
+
+**Current best proposal:** Confidence = distance of the enrichment score from the nearest bucket boundary (HOT/WARM/COLD threshold). This captures something the enrichment score does not — how stable the bucket assignment is.
+
+**Blocker:** Bucket thresholds are `[TBD]`. Confidence formula cannot be finalised until boundaries are locked.
+
+**Still confirmed:**
+- LLM self-reported confidence is NOT used (LLMs are poorly calibrated)
+- Weighted signal coverage is NOT used (redundant with enrichment score)
 
 ## Edge Cases `[LOCKED]`
 
@@ -46,7 +57,7 @@ Example: "Score: 85 | Confidence: 72% — review recommended"
 
 ## Tensions & Contradictions
 
-None yet. Open question: if confidence is self-reported by the LLM, it may not be well-calibrated. Needs empirical testing once Agent E is live.
+None. Previous open question around LLM self-reported confidence being poorly calibrated is resolved — self-reporting is not used.
 
 ## Related Concepts
 

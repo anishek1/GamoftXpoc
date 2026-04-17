@@ -1,0 +1,129 @@
+---
+type: analysis
+question: "How should confidence be calculated in the Lead Intelligence Engine? Is enrichment-based confidence valid?"
+date: 2026-04-17
+tags: [confidence, scoring, enrichment, routing, brainstorm]
+sources_consulted: [sources/2026-lead-intelligence-engine-reference, concepts/confidence-first-class]
+status: in-progress — user needs more clarity, discussion to continue
+---
+
+# Confidence Scoring — Brainstorm & Open Questions
+
+**Question:** How exactly should confidence be calculated? Is deriving it from enrichment score valid?  
+**Date:** 2026-04-17  
+**Status:** Incomplete — user is not yet clear on the topic. Resume and resolve before locking.
+
+---
+
+## Context
+
+Confidence is Add-on 3 of the Lead Intelligence Engine v2.0. It was previously decided (2026-04-16) that confidence would be derived from the enrichment score. This session challenged that decision.
+
+---
+
+## What We Established (Agreed)
+
+### 1. The System's Flow
+
+```
+Dev team defines signals + weights (per tenant, per persona)
+         ↓
+Enrichment pipeline runs → signals fire or don't (based on data availability)
+         ↓
+Enrichment Score = weighted sum of fired signals → Bucket (HOT / WARM / COLD)
+         ↓
+Confidence = ??? (this is what is under review)
+```
+
+### 2. Three Types of Uncertainty Exist
+
+| Type | Meaning | Example |
+|---|---|---|
+| Data uncertainty | Not enough information | Only 2 of 8 signals fired |
+| Signal uncertainty | Data is contradictory | High seniority but company shrinking |
+| Boundary uncertainty | Score is near a bucket cutoff | Score of 72 when boundary is at 70 |
+
+### 3. Weights Are Per-Tenant, Per-Persona
+
+Signals and their weights are configured by the dev team based on the tenant's persona. This means any confidence formula must respect those weights — you cannot treat all signals as equal.
+
+---
+
+## The Key Problem We Identified
+
+### Weighted Signal Coverage Is Circular
+
+The first proposed formula was:
+
+```
+Confidence = sum(weights of signals that fired) / sum(all weights) × 100
+```
+
+**This is redundant.** If missing signals contribute 0 to the enrichment score, then:
+
+- High enrichment score → many high-weight signals fired → high confidence
+- Low enrichment score → few signals fired → low confidence
+
+They move in the same direction always. **Confidence derived from signal coverage tells you nothing that the enrichment score doesn't already tell you.**
+
+---
+
+## The Insight That Emerged
+
+The enrichment score and confidence answer **different questions**:
+
+| | Question | Already captured by |
+|---|---|---|
+| Enrichment Score | How good is this lead? | Enrichment pipeline |
+| Confidence | How stable is this lead's bucket assignment? | NOT captured yet |
+
+The only scenario where confidence adds genuine new information:
+
+**Two leads with the same enrichment score but different distance from a bucket boundary.**
+
+| Lead | Score | Nearest Boundary | Confidence in Bucket |
+|---|---|---|---|
+| A | 85 | boundary at 70 | 15 pts away → stable HOT |
+| B | 72 | boundary at 70 | 2 pts away → fragile HOT |
+
+Lead B is barely HOT. One missing signal could flip it to WARM. The enrichment score alone doesn't surface this. Bucket proximity does.
+
+### Revised Definition (Proposed, Not Locked)
+
+```
+Confidence = how far the enrichment score sits from the nearest bucket boundary
+```
+
+---
+
+## What Is Still Unresolved
+
+### Blocker: Bucket Boundaries Are TBD
+
+Confidence cannot be computed until HOT / WARM / COLD score thresholds are defined by the dev team. This is the primary open decision.
+
+### Open Questions to Resolve in Next Session
+
+1. **What are the bucket boundary thresholds?** (e.g., score ≥70 = HOT, 40–69 = WARM, <40 = COLD) — dev team to decide
+2. **How do we normalize boundary distance into a 0–100% confidence score?** (need a formula once boundaries are known)
+3. **Does signal coverage play any role at all?** Or is it already fully captured by the enrichment score?
+4. **Are the existing routing bands (≥80%, 50–79%, <50%) still the right thresholds** now that confidence means something different?
+5. **User clarity gap:** The user flagged they are not yet clear on the topic. Do not lock any decision until the user confirms understanding and agreement.
+
+---
+
+## What Changed From Previous Decision (2026-04-16)
+
+| Before | After This Session |
+|---|---|
+| Confidence derived from enrichment score threshold | Enrichment-based confidence is circular — under review |
+| Method: self-reported LLM certainty ruled out | Still ruled out |
+| Method: weighted signal coverage proposed | Also ruled out — redundant with enrichment score |
+| New proposal: boundary proximity | Not yet locked — bucket thresholds needed first |
+
+---
+
+## Follow-up Questions
+- Lock bucket boundaries (HOT/WARM/COLD thresholds) — this unlocks confidence formula
+- Revisit routing bands once confidence definition is finalised
+- Confirm with user that boundary-proximity framing makes intuitive sense before proceeding
