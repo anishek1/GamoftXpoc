@@ -597,3 +597,110 @@ Monthly for AR1 and AR2. AR3 and AR4 reviewed quarterly or when AR1/AR2 flag a p
 ### Owner
 
 Product owner. Team leads own AR5 follow-through.
+
+---
+
+---
+
+## Global KPIs
+
+**What this section is for:**
+The sections above each cover one specific part of the scoring system. This section rolls everything up into three numbers for the dashboard — one view that tells you how the system is doing across all tenants without having to read each group separately.
+
+---
+
+### Global KPI 1 — System Health
+
+**Question this answers:**
+Is the scoring system running properly across all tenants — are leads making it through, and are scores coming out the same way every time?
+
+**Two numbers shown side by side:**
+
+```
+Pipeline Coverage   =   Average Scaore Coverage Rate across all tenants
+Score Stability     =   Average Bucket Stability Rate across all tenants
+```
+
+Both are percentages. Both should be high. If either drops, something is broken in the pipeline — not in the scoring logic, but in the engine itself.
+
+**How to read it at a glance:**
+- Both near 100% → system is running cleanly
+- Coverage drops → leads are getting lost before scoring even happens
+- Stability drops → the same lead is getting different scores on different runs — the output cannot be trusted
+
+**These are not combined into one number.** A 60% coverage and 100% stability would average to 80% and look fine — but 40% of leads being lost is not fine. Showing them separately means nothing can hide.
+
+**Data comes from:** Score Coverage Rate (pipeline intake log) and C1 Bucket Stability Rate (historical score records). Both already calculated in the sections above.
+
+**Owner:** Engineering lead.
+
+**Review cadence:** Weekly. Any drop here takes priority over everything else.
+
+---
+
+### Global KPI 2 — Business Health
+
+**Question this answers:**
+Is the scoring actually helping the sales team — are HOT leads clearly better than COLD leads, and are salespeople acting on them in time?
+
+**Two numbers shown side by side:**
+
+```
+Scoring Lift        =   Median Discrimination Ratio across all tenants
+HOT Response Rate   =   Average HOT SLA Compliance Rate across all tenants
+```
+
+**Scoring Lift** tells you how much better HOT leads are performing compared to COLD leads, averaged across all tenants. A value of 3 means HOT leads are converting 3 times more often than COLD. A value near 1 means scoring is not making any difference.
+
+**HOT Response Rate** tells you what percentage of HOT leads across all tenants are being followed up within the required time window. A HOT lead that no one acts on fast enough is a wasted opportunity.
+
+**How to read it at a glance:**
+- Scoring Lift is high, HOT Response Rate is high → scoring is working and the team is using it
+- Scoring Lift is low → the scoring logic needs review — it is not separating good leads from bad ones
+- HOT Response Rate is low → the sales team is not acting fast enough — this is a workflow or training problem, not a scoring problem
+
+**These are not combined into one number** for the same reason as above — a broken lift score and a perfect response rate would cancel each other out and hide the real issue.
+
+**Data comes from:** AP2 Discrimination Ratio (CRM outcomes) and AR1 HOT SLA Compliance Rate (action logs). Both already calculated in the sections above.
+
+**Owner:** Product owner. AI/ML owner co-reviews Scoring Lift.
+
+**Review cadence:** Monthly.
+
+---
+
+### Global KPI 3 — Tenant Health Rate
+
+**Question this answers:**
+What percentage of tenants are fully healthy right now — meaning all their primary metrics are within the acceptable range?
+
+**Formula:**
+
+```
+Tenant Health Rate = (Tenants Where All Primary Metrics Are Within Range / Total Active Tenants) × 100
+```
+
+**How to read it at a glance:**
+- 100% → every tenant is healthy
+- Drops to 94% → 6 tenants need attention — drill down to per-tenant view to see which ones and which metric is failing
+
+This is the one number an executive can look at. When it drops, the team investigates which tenants are pulling it down and why.
+
+**Why this is not available yet:**
+This metric requires thresholds — a defined range for what "within acceptable" means for each primary metric. Those thresholds cannot be set until Month 1 baseline data exists. Until then, this slot on the dashboard remains blank.
+
+**What triggers it being turned on:** Once Month 1 data is in, the team sets thresholds for Coverage Rate, Bucket Stability, Discrimination Ratio, and HOT SLA Compliance per tenant. After that, this metric is live.
+
+**Owner:** Product owner.
+
+**Review cadence:** Monthly once live.
+
+---
+
+### Summary View
+
+| Global KPI | What It Shows | Numbers Inside |
+|---|---|---|
+| System Health | Is the engine running correctly? | Pipeline Coverage + Score Stability |
+| Business Health | Is scoring creating value? | Scoring Lift + HOT Response Rate |
+| Tenant Health Rate | What % of tenants are fully healthy? | Single % (live after Month 1 baseline) |

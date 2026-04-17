@@ -4,6 +4,16 @@
 
 ---
 
+## [2026-04-17] analysis | Scoring Quality Metrics — Global KPIs Section Added
+
+- File updated: wiki/analyses/scoring-quality-metrics.md
+- Added Global KPIs section at end of document
+- 3 global KPIs: System Health (Pipeline Coverage + Score Stability), Business Health (Scoring Lift + HOT Response Rate), Tenant Health Rate (composite, blocked until Month 1 baseline)
+- Written for non-technical readers — plain language, no jargon
+- Pairs kept separate within each KPI to prevent hidden failures from averaging
+
+---
+
 ## [2026-04-17] schema-update | Scoring Quality Metrics — Universal Formula Rewrite
 
 - File updated: wiki/analyses/scoring-quality-metrics.md
