@@ -100,7 +100,33 @@ Thresholds are starting points. Calibrate after Month 1 using AP1 and AP2 scorin
 
 ## Governance Layer
 
-Cross-cutting, not part of either pipeline's sequential flow. Covers: monitoring, auditability, lineage, feedback loops, quality tracking, security controls.
+Cross-cutting, not part of either pipeline's sequential flow. Covers six domains in dependency order: monitoring → auditability → lineage → feedback loops → quality tracking → security controls. Full documentation: [[analyses/governance-observability-layer]].
+
+**Governance failure must never halt Pipeline 1 or Pipeline 2.** All governance jobs run independently — event-driven or scheduled.
+
+## Quality Metrics Integration
+
+The pipeline is both the execution engine and the measurement subject. Every stage the orchestrator executes writes lineage entries that feed the scoring quality metrics. The orchestrator writing complete, accurate lineage is the prerequisite for the entire measurement system.
+
+| What the pipeline produces | Quality metric it feeds |
+|---|---|
+| Lead reaches `scored` state | Score Coverage Rate (numerator) |
+| Confidence value at scoring | Per-run confidence distribution; C1, C2 |
+| Dimension scores at scoring | AP1, AP2 (bucket outcome rates need dimension breakdown) |
+| Bucket assignment | AP1, AP2, AR1, AR2, AR3, AR4, AR5 |
+| Prompt version at scoring | Attribution job (feedback loop Step 1) — wrong-bucket pattern detection |
+| Fired signals per lead | AP3 Completeness Qualifier; C5 Signal Contribution Consistency |
+| `pipeline_stage` transitions | Score Coverage Rate denominator; concurrency guard; crash recovery |
+
+**The measurement loop:**
+1. Orchestrator writes per-lead lineage → `pipeline_log`
+2. Scheduled SQL jobs read `pipeline_log`, `leads`, `feedback_events`
+3. Results written to `quality_snapshots` (per metric, per tenant, per cadence)
+4. Three Global KPIs computed: System Health (weekly), Business Health (monthly), Tenant Health Rate (monthly after Month 1)
+5. Team lead + product owner review → approve recalibration → bucket thresholds or signal weights updated → orchestrator uses new config on next run
+
+Full metric definitions: [[analyses/scoring-quality-metrics]]
+Full KPI orchestration workflow diagram: [[analyses/orchestration-layer-spec]] Section 5.1
 
 ## Build Order `[LOCKED — from source ref, updated for two-pipeline]`
 

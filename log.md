@@ -4,6 +4,46 @@
 
 ---
 
+## [2026-04-19] schema-update | Full Documentation Audit — Governance Structure, Orchestration KPI Integration, Diagrams
+
+- Files updated: wiki/analyses/governance-observability-layer.md, wiki/analyses/orchestration-layer-spec.md
+- Supporting updates: wiki/overview.md, index.md, wiki/concepts/lead-pipeline-architecture.md
+
+### governance-observability-layer.md — 3 structural defects fixed
+
+1. **Duplicate Section 5** — Feedback Loops and Quality Tracking were both numbered Section 5. Fixed: Feedback Loops = Section 5, Quality Tracking = Section 6. Section 1 table already had the correct numbering; the body now matches it.
+2. **Wrong subsection numbering inside Quality Tracking** — sub-sections read `6.2`, `6.3`, `6.4` while parent heading was Section 5. Fixed: parent renamed to Section 6; subsection `5.1 Approach` renamed to `6.1 Approach`; `6.2/6.3/6.4` were already correct after parent rename.
+3. **Wrong section ordering** — Feedback Loops was buried after Security Controls (Section 7) and New Tables (Section 8). Fixed: Feedback Loops moved to Section 5, directly after Lineage (Section 4). Dependency order is now: Monitoring → Auditability → Lineage → Feedback Loops → Quality Tracking → Security.
+
+### governance-observability-layer.md — how/why reasoning added throughout all 6 domains
+
+- **Section 1:** Why governance is a separate layer (not in pipeline critical path); why the 6 domains are ordered the way they are (dependency chain — each section can reference the one before it)
+- **Section 2:** Why each monitoring metric exists; why alert thresholds are not set before Month 1 baseline
+- **Section 3:** Why two audit surfaces not one — `pipeline_log` (what system did) vs `access_log` (what user did) answer fundamentally different questions; mixing makes both unqueryable
+- **Section 4:** Why lineage must be built before the second LLM agent (retrofit cost grows as ~n² due to interlocking concurrent state, not n×); why one table serves both lineage and audit purposes
+- **Section 5:** Why feedback loops exist (system degrades silently without them); why 3-step not 1-step (raw thumbs down is useless without attribution; attribution without pattern detection produces overreaction); why attribution fires immediately not weekly; why weekly fixed-count threshold not daily rate-based; why 5 team lead action options; why the loop is slow by design
+- **Section 6:** Why SQL jobs against existing tables (no new infrastructure = no new sync problem); why 3 cadences not 1 (per-run answers operational health, weekly answers salesperson behaviour, monthly answers business value — different time horizons); why thresholds set after Month 1
+- **Section 7:** Why 3 security layers (each defends different failure mode: code bugs / identity spoofing / privilege misuse); why 4 RBAC roles not 2 or 10; why PII encrypted but scores are not; why credentials in vault not DB; why soft deletes during normal operation
+
+### orchestration-layer-spec.md — 4 KPI cross-reference gaps closed
+
+1. **Quality tracking row (Section 5 table)** — added `[[analyses/scoring-quality-metrics]]` link
+2. **Global KPIs paragraph (Section 5)** — added paragraph naming all 3 Global KPIs, who reviews each, at what cadence, and what a drop in System Health means operationally
+3. **Confidence routing (Stage 5 Bucketize)** — added "Why this threshold" column to routing table; added paragraph connecting the 3 confidence bands to the per-run confidence distribution KPI and its alert trigger
+4. **Lineage writes (Section 8.5)** — added paragraph stating lineage is the data foundation for all quality metrics; added field-by-field table mapping each lineage field to the specific quality metrics that depend on it
+
+### orchestration-layer-spec.md — 2 new diagrams added
+
+1. **Section 2 System Architecture (updated)** — governance box expanded to show: lineage write arrows from both pipelines; Quality Tracking sub-layer with 3 cadence columns (PER-RUN / WEEKLY / MONTHLY); quality_snapshots merge point; 3 Global KPI outputs (System Health, Business Health, Tenant Health Rate); team lead review note and config-back-to-orchestrator arrow
+2. **Section 5.1 Quality Metrics Orchestration Flow (new)** — full lifecycle diagram from pipeline run end → per-lead lineage in pipeline_log → 3 SQL job cadences → quality_snapshots → Global KPIs (with WHO and WHEN annotated per KPI) → team lead + product owner review → two recalibration paths (bucket threshold via AP1/AP2; feedback-driven via weight/prompt/ICP re-run) → back to ORCHESTRATOR with specific config fields updated. Includes "How to read" table and rationale for why the loop is intentionally slow.
+
+### Concepts explained in session (not previously documented)
+
+- **Scoring Agent concurrency cap (recommend: 5)** — why a cap exists (rate limits + cost control); how the queue works (5 always running, next enters as one finishes); why 5 is the starting recommendation
+- **Timeout threshold for concurrency guard (recommend: 15–30 min)** — what problem it solves (distinguishing active processing from crashed run); why too short causes unnecessary retries; why too long causes recovery delay; why 15-30 min sits safely above any realistic healthy stage duration
+
+---
+
 ## [2026-04-19] schema-update | Orchestration Layer Spec — Final Document Rewrite
 
 - File rewritten: wiki/analyses/orchestration-layer-spec.md

@@ -1,11 +1,11 @@
 ---
-last_updated: 2026-04-14
+last_updated: 2026-04-19
 source_count: 1
 ---
 
 # Wiki Index
 
-**Last updated:** 2026-04-14 | **Sources ingested:** 1
+**Last updated:** 2026-04-19 | **Sources ingested:** 1
 
 *This file is maintained by the Wiki Agent. Do not edit manually.*
 
@@ -54,8 +54,8 @@ source_count: 1
 - [[wiki/analyses/consistency-metrics]] — Consistency metric group card; C1 Cross-Run Bucket Stability, C2 Temporal Score Drift, C3 Boundary Flip Rate (blocked), C4 Decay-Rescore Coherence, C5 Signal Contribution Consistency | date: 2026-04-17 | status: complete
 - [[wiki/analyses/accuracy-proxy-metrics]] — Accuracy proxy metric group card; AP1 BOR, AP2 Monotonicity, AP3 Discrimination Ratio, AP4 Completeness Qualifier; part of scoring quality metrics story | date: 2026-04-17 | status: complete
 - [[wiki/analyses/confidence-scoring-brainstorm]] — Confidence calculation brainstorm; enrichment-based confidence ruled out as circular; boundary-proximity proposed but not locked; bucket thresholds needed | date: 2026-04-17 | status: IN PROGRESS
-- [[wiki/analyses/governance-observability-layer]] — Governance layer: monitoring, auditability, lineage, feedback enforcement loop (attribution→pattern→team lead action), quality tracking, security (RLS + JWT + 4-role RBAC) | date: 2026-04-19 | status: COMPLETE
-- [[wiki/analyses/orchestration-layer-spec]] — Subtask 3 responsibilities spec: two-pipeline architecture, 4 LLM agents, fill-in-the-blanks prompt mechanism, deterministic signal extraction, bucket thresholds 80/55/0, governance layer | date: 2026-04-19 | status: COMPLETE
+- [[wiki/analyses/governance-observability-layer]] — Governance layer: 6 domains in dependency order (monitoring → auditability → lineage → feedback loops → quality tracking → security); full how/why reasoning throughout; 3-step feedback loop (attribution → pattern detection → team lead action); 3-layer security (RLS + JWT + 4-role RBAC); why/how for every design decision | date: 2026-04-19 | status: COMPLETE
+- [[wiki/analyses/orchestration-layer-spec]] — Subtask 3 responsibilities spec: two-pipeline architecture, 4 LLM agents, fill-in-the-blanks prompt, deterministic signal extraction, bucket thresholds 80/55/0; updated system architecture diagram shows full KPI layer inside governance; Section 5.1 Quality Metrics Orchestration Flow shows full pipeline-to-KPI-to-recalibration lifecycle; 4 cross-references to scoring-quality-metrics wired in | date: 2026-04-19 | status: COMPLETE
 - [[wiki/analyses/orchestration-layer-dependencies]] — Dependency analysis for subtask 3 (orchestration layer); what S1 and S2 devs must deliver before orchestrator can be defined; 3 hard blockers identified | date: 2026-04-17
 
 **Note:** wiki/analyses/success-metrics-framework.md and wiki/analyses/success-metrics-brief.md were deleted from the filesystem (visible in git status). Log entries exist but files are gone.
