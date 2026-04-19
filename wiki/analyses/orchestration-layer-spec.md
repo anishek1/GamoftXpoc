@@ -50,19 +50,45 @@ Every pipeline starts from the orchestrator. Every tool is called by the orchest
   │          ↓              │  prompt │          ↓                   │
   │  Prompt Template built  │         │   Scoring Agent (LLM)        │
   └─────────────────────────┘         │          ↓                   │
-                                      │   Bucketize                  │
-                                      └──────────────────────────────┘
-                                                   │
-                             ┌─────────────────────┘
-                             ▼
-                   ┌──────────────────────┐
-                   │   GOVERNANCE LAYER   │
-                   │  monitoring          │
-                   │  lineage             │
-                   │  feedback loops      │
-                   │  quality tracking    │
-                   │  security            │
-                   └──────────────────────┘
+          │ lineage                   │   Bucketize → salesperson    │
+          │ writes                    └──────────────┬───────────────┘
+          │ (both pipelines)               lineage   │
+          └────────────────────────────────writes ───┘
+                                    │
+              ┌─────────────────────▼────────────────────────────────┐
+              │                GOVERNANCE LAYER                       │
+              │   monitoring · auditability · feedback loops          │
+              │   lineage (pipeline_log) · security                   │
+              │                                                      │
+              │   ┌─────────────────────────────────────────────┐   │
+              │   │          QUALITY TRACKING                    │   │
+              │   │   [[analyses/scoring-quality-metrics]]       │   │
+              │   │                                              │   │
+              │   │  ┌──────────┐  ┌──────────┐  ┌──────────┐  │   │
+              │   │  │ PER-RUN  │  │  WEEKLY  │  │ MONTHLY  │  │   │
+              │   │  │ Coverage │  │ AR1 SLA  │  │ AP1 BOR  │  │   │
+              │   │  │ Confid.  │  │ AR2 Act  │  │ AP2 Sep  │  │   │
+              │   │  │ Buckets  │  │ C1 Stab  │  │ AP3/C4   │  │   │
+              │   │  │ Failures │  │ C2 Drift │  │ AR5 Algn │  │   │
+              │   │  └────┬─────┘  └────┬─────┘  └────┬─────┘  │   │
+              │   │       └─────────────┼──────────────┘        │   │
+              │   │                     ▼                        │   │
+              │   │           quality_snapshots                  │   │
+              │   │                     │                        │   │
+              │   │        ┌────────────┼───────────┐            │   │
+              │   │        ▼            ▼           ▼            │   │
+              │   │    System       Business     Tenant          │   │
+              │   │    Health       Health       Health          │   │
+              │   │    (weekly)     (monthly)    Rate            │   │
+              │   └─────────────────────────────────────────────┘   │
+              │                        │                             │
+              │           team lead + product owner review           │
+              │           → recalibrate buckets (AP1 / AP2)         │
+              │           → update weights / approve Pipeline 2      │
+              └──────────────────────────────────────────────────────┘
+                                        │ config applied to next run
+                                        ▼
+                                   ORCHESTRATOR
 ```
 
 **There are 4 LLM agents in the entire system:**
@@ -486,6 +512,134 @@ The Governance Layer is not part of either pipeline's sequential flow. It runs a
 Run-level data from both pipelines feeds the three Global KPIs defined in [[analyses/scoring-quality-metrics]]: **System Health** (Pipeline Coverage + Score Stability, reviewed weekly by the engineering lead), **Business Health** (Scoring Lift + HOT Response Rate, reviewed monthly by the product owner), and **Tenant Health Rate** (reviewed monthly once Month 1 baseline thresholds are set). A drop in System Health is an engineering escalation — it means the orchestrator is losing leads before scoring or producing inconsistent scores across runs.
 
 Full documentation: [[analyses/governance-observability-layer]]
+
+### 5.1 Quality Metrics Orchestration Flow
+
+This diagram shows the full lifecycle: how raw pipeline events become quality metrics, how metrics become Global KPIs, and how KPI review feeds back into orchestrator configuration.
+
+```
+  PIPELINE 1 RUN ENDS         PIPELINE 2 ONBOARDING ENDS
+         │                               │
+         │  orchestrator writes          │  orchestrator writes
+         │  per-lead lineage             │  onboarding lineage
+         └───────────────┬───────────────┘
+                         │
+                         ▼
+        ┌─────────────────────────────────────────┐
+        │               pipeline_log               │
+        │  confidence · dimension_scores           │
+        │  prompt_version · signal_version         │
+        │  fired_signals · pipeline_stage          │
+        │  run_id · lead_id · tenant_id            │
+        └────────┬────────────────────────────────-┘
+                 │         also reads: leads table
+                 │         also reads: feedback_events table
+                 │
+     ┌───────────┴────────────────────────────────┐
+     │                                            │
+     ▼  (immediate — fires at end of every run)   ▼  (Monday 00:00 — scheduled)
+┌─────────────────────┐                  ┌──────────────────────────┐
+│     PER-RUN SQL     │                  │      WEEKLY SQL JOB      │
+│                     │                  │                          │
+│  Score Coverage     │                  │  AR1  SLA Compliance     │
+│  Confidence bands   │                  │  AR2  Action Rate        │
+│  Bucket dist.       │                  │  AR3  Time-to-Action     │
+│  Pipeline failures  │                  │  AR4  Action Types       │
+│  Human review rate  │                  │  C1   Bucket Stability   │
+└──────────┬──────────┘                  │  C2   Score Drift        │
+           │                             └──────────────┬───────────┘
+           │                                            │
+           │             ┌──────────────────────────────┘
+           │             │
+           │             │        ┌────────────────────────────────────┐
+           │             │        │         MONTHLY SQL JOB            │
+           │             │        │  (minimum 100 outcomes per bucket) │
+           │             │        │                                    │
+           │             │        │  AP1  Bucket Outcome Rate          │
+           │             │        │  AP2  Discrimination Ratio         │
+           │             │        │  AP3  Completeness Qualifier       │
+           │             │        │  C4   Decay-Rescore Coherence      │
+           │             │        │  AR5  Priority Alignment           │
+           │             │        └──────────────────┬─────────────────┘
+           │             │                           │
+           └─────────────┴───────────────────────────┘
+                                     │
+                                     ▼
+                       ┌─────────────────────────┐
+                       │     quality_snapshots    │
+                       │  (one row per metric,    │
+                       │   per tenant, per run)   │
+                       └────────────┬────────────-┘
+                                    │
+               ┌────────────────────┼─────────────────────┐
+               ▼                    ▼                      ▼
+  ┌────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
+  │   System Health    │  │   Business Health    │  │  Tenant Health Rate  │
+  │                    │  │                      │  │                      │
+  │  Pipeline Coverage │  │  Scoring Lift        │  │  % tenants where all │
+  │  (Score Coverage   │  │  (AP2 Discrimination │  │  primary metrics are │
+  │   Rate avg across  │  │   Ratio, median      │  │  within range        │
+  │   all tenants)     │  │   across tenants)    │  │                      │
+  │                    │  │                      │  │  NOT live until      │
+  │  Score Stability   │  │  HOT Response Rate   │  │  Month 1 baseline    │
+  │  (C1 Bucket        │  │  (AR1 HOT SLA        │  │  thresholds are set  │
+  │   Stability avg    │  │   Compliance avg     │  │                      │
+  │   across tenants)  │  │   across tenants)    │  │                      │
+  │                    │  │                      │  │                      │
+  │  WHO: Eng lead     │  │  WHO: Product owner  │  │  WHO: Product owner  │
+  │  WHEN: weekly      │  │       + AI/ML owner  │  │  WHEN: monthly       │
+  │  DROP = escalate   │  │  WHEN: monthly       │  │  (post-Month 1)      │
+  └─────────┬──────────┘  └──────────┬───────────┘  └──────────┬───────────┘
+            └─────────────────────────┼──────────────────────────┘
+                                      │
+                          team lead + product owner review
+                                      │
+               ┌──────────────────────┴────────────────────────┐
+               │                                               │
+               ▼                                               ▼
+  ┌───────────────────────────┐              ┌────────────────────────────────┐
+  │  Bucket Threshold         │              │  Feedback-Driven Action        │
+  │  Recalibration            │              │                                │
+  │                           │              │  Weight update                 │
+  │  AP1 HOT outcome rate     │              │  → edit signal_definitions     │
+  │  too low → lower HOT      │              │    .weight_within_dimension    │
+  │  boundary (e.g. 80→75)    │              │                                │
+  │                           │              │  Prompt update                 │
+  │  AP2 ratio near 1 →       │              │  → new version in              │
+  │  buckets not separating   │              │    prompt_registry             │
+  │  → review signal weights  │              │                                │
+  │                           │              │  ICP + Signal Agent re-run     │
+  │  [Month 1 minimum         │              │  → triggers Pipeline 2         │
+  │   before first adjustment]│              │  → team lead must approve      │
+  └─────────────┬─────────────┘              └──────────────┬─────────────────┘
+                └──────────────────────┬────────────────────┘
+                                       │ human-approved only [LOCKED]
+                                       ▼
+              ┌────────────────────────────────────────────────┐
+              │                  ORCHESTRATOR                   │
+              │                                                │
+              │  Updated bucket thresholds in tenant_config    │
+              │  Updated signal weights in signal_definitions  │
+              │  New prompt_version active in prompt_registry  │
+              │  New signal_version (if Pipeline 2 re-ran)     │
+              │                                                │
+              │  → Applied on the next Pipeline 1 run          │
+              └────────────────────────────────────────────────┘
+```
+
+**How to read this diagram:**
+
+| Layer | What it produces | Who consumes it |
+|---|---|---|
+| pipeline_log | Raw event data per lead per stage | SQL jobs (all three cadences) |
+| Per-run SQL | Operational health signal — is the pipeline working right now? | Engineering lead (immediate alert if threshold breached) |
+| Weekly SQL | Behaviour signal — are salespeople acting on scores? | Team lead reviews Monday |
+| Monthly SQL | Business value signal — is scoring separating good leads from bad? | Team lead + product owner monthly |
+| quality_snapshots | Stored metric values per tenant per cadence | Global KPI computation |
+| Global KPIs | Executive-level one-view summary | Product owner, reviewed monthly |
+| Recalibration | Config changes that close the improvement loop | Orchestrator on next run |
+
+**The loop is intentionally slow.** Per-run fires immediately, but bucket recalibration only happens after monthly data accumulates — because outcome data (whether a HOT lead actually converted) takes weeks to resolve. Rushing the feedback loop before enough data exists would produce changes based on noise, not signal.
 
 ---
 
