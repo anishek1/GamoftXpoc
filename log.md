@@ -4,6 +4,157 @@
 
 ---
 
+## [2026-04-19] schema-update | Orchestration Layer Spec — Final Document Rewrite
+
+- File rewritten: wiki/analyses/orchestration-layer-spec.md
+- Purpose: full rewrite into plain English, readable in one go, with proper diagrams
+- Diagrams added: system architecture (orchestrator + two pipelines + governance), Pipeline 1 fan-out (6-stage with parallel lead processing), fill-in-the-blanks prompt mechanism (before/after signal slot filling)
+- All three S3 pillars fully documented: Controller, Tool Invocation, State Tracking
+- All confirmed decisions, open decisions, and S1/S2 hard + soft blockers retained
+- Removed: redundant internal explanations, excessive sub-headers, verbose normalisation rule lists
+- Structure: 11 sections — What it is → Architecture → Pipeline 2 → Pipeline 1 → Governance → Controller → Tool Invocation → State Tracking → S1/S2 contracts → Open decisions → Confirmed decisions
+- Status remains: COMPLETE
+
+---
+
+## [2026-04-19] schema-update | Orchestration Layer Spec — COMPLETE
+
+- File updated: wiki/analyses/orchestration-layer-spec.md
+- Status: IN PROGRESS → COMPLETE (tool invocation envelope proposed; pending S1/S2 confirmation)
+- Section 5.1 fixed: "3-role RBAC" → "4-role RBAC (admin, team_lead, salesperson, viewer)"
+- Section 5.1 fixed: Feedback loops row updated from `[TBD]` to reference governance-observability-layer Section 5
+- Index updated: orchestration-layer-spec status updated to COMPLETE
+
+**Full document coverage (Subtask 3 — S3):**
+- Section 1: Purpose & Scope
+- Section 2: Architecture Overview — two pipelines, 4 LLM agents
+- Section 3: Pipeline 2 (Onboarding — Onboarding Agent, ICP Agent, Signal Agent)
+- Section 4: Pipeline 1 (Event/Lead — Data Gather, Lead Enrichment, Normalise, Scoring Agent, Bucketize)
+- Section 5: Governance Layer (cross-cutting — reference to full governance doc)
+- Section 6: Orchestration Controller Responsibilities (Pipeline 2 + Pipeline 1 orchestration, cross-pipeline coordination)
+- Section 7: Tool Invocation (capability registry, standard envelope, retry policies)
+- Section 8: State Tracking (stage transitions, stage update rule, concurrency guard, lineage writes, run-level state, crash recovery)
+- Section 9: Interface Contracts Needed (hard + soft blockers for S1/S2)
+- Section 10: Open Questions
+- Section 11: Confirmed Decisions
+
+---
+
+## [2026-04-19] schema-update | Governance Layer — Proactive Tenant Check-In + Open Questions Fix
+
+- File updated: wiki/analyses/governance-observability-layer.md
+- Section 5.7 added: Proactive Tenant Business Check-In
+  - Scheduled check-in via existing chat interface (cadence TBD: 2-week or monthly range)
+  - Recipient: team_lead of the tenant (TBD — confirm with team)
+  - Response handling: 4-step flow — natural language response → Intent Classifier → no change / minor update / significant change
+  - Significant change → ICP + Signal Agent re-run (Pipeline 2) with team lead approval
+  - Check-in event logged to access_log
+  - Rule: system suggests, human approves. Never automatic. [LOCKED principle]
+  - Connection to Add-on 8 (deferred): check-in is proactive schedule-driven; Add-on 8 is data-pattern-driven — both use same chat surface and same principle
+- Pipeline 2 re-run triggers in orchestration-layer-spec.md updated to document both mechanisms (check-in + feedback-driven)
+- Open Questions section fixed: mislabeled "## 6. Quality Tracking" renamed to "## 9. Open Questions"
+- 4 new TBDs added to Open Questions: check-in cadence, check-in recipient, message wording, flagging threshold (N)
+- Confirmed Decisions updated:
+  - "3 roles" → "4 roles: admin, team_lead, salesperson, viewer"
+  - Added: team_lead tenant-scoped decision
+  - Added: proactive check-in confirmed decisions (3 rows)
+
+---
+
+## [2026-04-19] schema-update | Governance Layer — Feedback Loop + 4-Role RBAC
+
+- File updated: wiki/analyses/governance-observability-layer.md
+- Status updated: IN PROGRESS → COMPLETE
+- Feedback loop fully documented (Section 5):
+  - 3-step enforcement loop: attribution (immediate) → pattern detection (weekly) → team lead action
+  - Attribution extracts from lineage: signal_version, prompt_version, fired_signals, dimension_scores, explanation_reasons, confidence
+  - New table: attributed_feedback (enriched feedback with lineage data)
+  - Pattern detection: groups by signal_version, prompt_version, fired_signals, explanation_reasons
+  - Flagging threshold: [TBD — fixed count approach confirmed]
+  - Action on pattern: re-run ICP + Signal Agent (not full Pipeline 2, not Signal only)
+  - Other actions: adjust weight manually, update prompt template, investigate, dismiss
+  - System suggests, human approves — never automated [LOCKED]
+  - Recommendations sent to: Team Lead role (tenant-scoped)
+- RBAC updated: 3 roles → 4 roles
+  - Added: team_lead (tenant-side, scoped to own tenant; receives enforcement recommendations)
+  - Existing: admin, salesperson, viewer
+  - user_roles CHECK constraint updated
+- Duplicate security section removed; section numbering corrected
+
+---
+
+## [2026-04-19] analysis | Governance and Observability Layer
+
+- Wiki page: [[wiki/analyses/governance-observability-layer]]
+- Domains documented: monitoring, auditability, lineage, quality tracking, security controls
+- Feedback loops: deferred to next discussion
+- Key decisions:
+  - Quality tracking: scheduled SQL jobs against existing Postgres tables; 3 cadences (per-run, weekly, monthly); results to `quality_snapshots` table; no new infrastructure
+  - Alert thresholds: `[TBD — after Month 1 baseline]`
+  - Security — 3-layer model:
+    - Layer 1: Postgres RLS on every tenant-scoped table (enforced at DB level)
+    - Layer 2: JWT with tenant_id + role claims (1h expiry + refresh)
+    - Layer 3: 3-role RBAC (admin, salesperson, viewer)
+  - Credentials: secrets vault (AWS Secrets Manager or HashiCorp — TBD); never in DB or code
+  - PII: encrypted at rest (phone, email, name, address)
+  - Audit: pipeline_log (transformations) + access_log (user actions) — two surfaces
+  - Soft deletes only during normal operation; hard deletes only during archival
+  - Retention policy: `[TBD — per jurisdiction]`
+- New tables added: `access_log`, `quality_snapshots`, `user_roles`
+- Governance layer failure must not halt Pipeline 1 or Pipeline 2
+
+---
+
+## [2026-04-19] schema-update | Architecture Revision — Two-Pipeline Model + Playbook Integration
+
+- Files updated: wiki/analyses/orchestration-layer-spec.md, wiki/concepts/lead-pipeline-architecture.md, wiki/concepts/agent-vs-tool-classification.md, wiki/overview.md
+- Source added: raw/assets/lead_intelligence_manual_enrichment_playbook (1).docx (referenced, not formally ingested)
+- Key changes from original single-pipeline architecture:
+  - Two pipelines confirmed: Pipeline 2 (Onboarding — one-time per tenant), Pipeline 1 (Event/Lead — per lead)
+  - LLM agent count: 1 → 4 (Onboarding Agent, ICP Agent, Signal Agent in Pipeline 2; Scoring Agent in Pipeline 1)
+  - Per-lead LLM cost preserved: still 1 LLM call per lead (Scoring Agent only)
+  - Signal extraction is deterministic (TOOL), not LLM — separation of extraction vs scoring
+  - Prompt mechanism: fill-in-the-blanks template; Signal Agent creates slots, Lead Enrichment fills values
+  - Bucket thresholds updated: 75/45 → 80/55/0 (playbook values; tenant-configurable starting points)
+  - Pipeline 1 stage order confirmed: event → data gather → lead enrichment → normalise → scoring → bucketize
+  - Governance Layer added as explicit cross-cutting layer (monitoring, auditability, lineage, feedback, quality, security)
+  - 10 enrichment dimensions documented from playbook (digital footprint, social/web, company intelligence, transactional behavior, intent signals, behavioral sequence, geo/context, psychographic proxy, network/referrals, external triggers)
+- New open questions surfaced: signal detection_rule format, Pipeline 2 re-run triggers, 4-agent LLM cost estimate
+
+---
+
+## [2026-04-19] analysis | Orchestration Layer — Responsibilities Specification (IN PROGRESS)
+
+- Wiki page: [[wiki/analyses/orchestration-layer-spec]]
+- Deliverable: Subtask 3 — Orchestration Controller, Tool Invocation, State Tracking
+- Audience: S1 (data layer) and S2 (intelligence layer) developers
+- Confirmed design decisions:
+  - Run model: mixed-mode (batch at Agent A, per-lead fan-out for B→C→D→E, single-threaded aggregation at Phase 06)
+  - Cross-lead parallelism: included from v2.0 (not deferred); concurrency cap on Agent E [TBD recommend 5]; shared rate limiter across fan-out
+  - Concurrency guard: status-based (not DB locks); non-terminal + recent = skip; non-terminal + stale = resume; timeout_threshold [TBD recommend 15-30 min]
+  - Stage update rule: pipeline_stage is the final atomic write after lineage + output_data written
+  - Lineage writer: orchestrator (not tools); written after every tool call, every phase
+  - Crash recovery: resume from current pipeline_stage; 2-retry budget per stage; Agent E re-invocation accepted tradeoff
+  - Background jobs (decay, SLA tracker, feedback collector): NOT in orchestrator primary flow
+  - Agent E retry policy: 2-attempt with per-failure-mode handling; route to human_review_queue on exhaustion
+  - Capability registry: resolved once at Phase 00; zero orchestrator changes per new use case
+- Proposed (needs S1/S2 confirmation): tool invocation standard envelope (input/output shape)
+- Hard blockers still open: pipeline_stage values (S1), pipeline_log schema (S1), Agent E output JSON schema incl. confidence field (S2)
+- Status: IN PROGRESS — crash recovery and tool envelope pending final discussion confirmation
+
+---
+
+## [2026-04-17] analysis | Orchestration Layer — Dependency Analysis
+
+- Wiki page: [[wiki/analyses/orchestration-layer-dependencies]]
+- Question: What must S1 (data layer) and S2 (intelligence layer) devs complete before subtask 3 (orchestration layer) can be defined?
+- Context: Story = Define System Layer; user is assigned subtask 3
+- Hard blockers identified (3): `leads` pipeline_stage field values, `pipeline_log` schema, Agent E output schema (especially confidence field format)
+- Soft blockers (4): tenant_config fields, persona object structure, Agent D output format, Agent E failure modes
+- Key finding: orchestrator sits between both layers and cannot be designed without knowing the interface contracts on both sides
+
+---
+
 ## [2026-04-17] analysis | Scoring Quality Metrics — Global KPIs Section Added
 
 - File updated: wiki/analyses/scoring-quality-metrics.md

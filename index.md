@@ -54,5 +54,8 @@ source_count: 1
 - [[wiki/analyses/consistency-metrics]] — Consistency metric group card; C1 Cross-Run Bucket Stability, C2 Temporal Score Drift, C3 Boundary Flip Rate (blocked), C4 Decay-Rescore Coherence, C5 Signal Contribution Consistency | date: 2026-04-17 | status: complete
 - [[wiki/analyses/accuracy-proxy-metrics]] — Accuracy proxy metric group card; AP1 BOR, AP2 Monotonicity, AP3 Discrimination Ratio, AP4 Completeness Qualifier; part of scoring quality metrics story | date: 2026-04-17 | status: complete
 - [[wiki/analyses/confidence-scoring-brainstorm]] — Confidence calculation brainstorm; enrichment-based confidence ruled out as circular; boundary-proximity proposed but not locked; bucket thresholds needed | date: 2026-04-17 | status: IN PROGRESS
+- [[wiki/analyses/governance-observability-layer]] — Governance layer: monitoring, auditability, lineage, feedback enforcement loop (attribution→pattern→team lead action), quality tracking, security (RLS + JWT + 4-role RBAC) | date: 2026-04-19 | status: COMPLETE
+- [[wiki/analyses/orchestration-layer-spec]] — Subtask 3 responsibilities spec: two-pipeline architecture, 4 LLM agents, fill-in-the-blanks prompt mechanism, deterministic signal extraction, bucket thresholds 80/55/0, governance layer | date: 2026-04-19 | status: COMPLETE
+- [[wiki/analyses/orchestration-layer-dependencies]] — Dependency analysis for subtask 3 (orchestration layer); what S1 and S2 devs must deliver before orchestrator can be defined; 3 hard blockers identified | date: 2026-04-17
 
 **Note:** wiki/analyses/success-metrics-framework.md and wiki/analyses/success-metrics-brief.md were deleted from the filesystem (visible in git status). Log entries exist but files are gone.
