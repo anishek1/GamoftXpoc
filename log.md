@@ -4,6 +4,37 @@
 
 ---
 
+## [2026-04-22] analysis | Delivery and Integration Layer
+
+- File created: [[wiki/analyses/delivery-integration-layer.md]]
+- Covers: chat interface (primary delivery surface), notifications, dashboards, CRM sync, external API + webhooks, report delivery
+- Sources consulted: [[sources/2026-lead-intelligence-engine-reference]], [[sources/2026-intelligence-layer-design]], [[sources/2026-core-business-entities]]
+- Related analyses: [[analyses/orchestration-layer-spec]] (handoff point — delivery begins when pipeline_stage = 'delivered'), [[analyses/governance-observability-layer]] (feedback loop and notification_delivery entity)
+
+### Key decisions documented
+
+- Chat is the primary delivery surface — lead cards, HOT alerts, SLA breach alerts, team lead recommendations, and proactive check-ins all delivered in chat
+- HOT leads get immediate push notification; WARM/COLD get ranked list delivery only
+- Four S1 delivery entities confirmed: `dashboard_definition`, `notification_delivery`, `delivery_endpoint`, `report_definition`
+- `delivery_endpoint` is the config record for every external integration (CRM, webhook) — scoped by tenant_id, credentials via vault reference
+- CRM push: HOT and WARM pushed immediately; COLD timing TBD; human_review and failed leads not pushed
+- Webhook payload signed with HMAC-SHA256; endpoints must use HTTPS
+- Delivery failures do not roll back Pipeline 1 — score and lineage are already persisted
+- RBAC-scoped access across every surface (admin · team_lead · salesperson · viewer)
+- Report cadences: weekly (team lead) + monthly (team lead + product owner) — content pulled from quality_snapshots
+
+### Open decisions recorded
+- Alert delivery channel for SLA breaches and recommendations (chat / email / both) — TBD
+- Dashboard tooling (in-product vs external BI) — TBD
+- Report format (PDF / HTML / inline chat) — TBD
+- CRM sync for COLD bucket (immediate vs daily batch) — TBD
+- Bidirectional CRM sync for outcome data — recommended for Month 2+
+- Full list: Section 12 of the analysis doc
+
+- Index updated with new analysis entry
+
+---
+
 ## [2026-04-22] schema-update | Closing stale analyses — confidence-scoring-brainstorm and orchestration-layer-dependencies
 
 - Files updated: wiki/analyses/confidence-scoring-brainstorm.md, wiki/analyses/orchestration-layer-dependencies.md
