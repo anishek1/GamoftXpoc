@@ -2,20 +2,55 @@
 type: analysis
 question: "How should confidence be calculated in the Lead Intelligence Engine? Is enrichment-based confidence valid?"
 date: 2026-04-17
-tags: [confidence, scoring, enrichment, routing, brainstorm]
-sources_consulted: [sources/2026-lead-intelligence-engine-reference, concepts/confidence-first-class]
-status: in-progress — user needs more clarity, discussion to continue
+tags: [confidence, lead-completeness, scoring, enrichment, routing, brainstorm]
+sources_consulted: [sources/2026-lead-intelligence-engine-reference, concepts/confidence-first-class, sources/2026-intelligence-layer-design]
+status: RESOLVED — 2026-04-22
 ---
 
-# Confidence Scoring — Brainstorm & Open Questions
+# Confidence Scoring — Brainstorm & Resolution
 
 **Question:** How exactly should confidence be calculated? Is deriving it from enrichment score valid?  
 **Date:** 2026-04-17  
-**Status:** Incomplete — user is not yet clear on the topic. Resume and resolve before locking.
+**Resolved:** 2026-04-22
 
 ---
 
-## Context
+## Resolution (2026-04-22)
+
+The question is now closed. The answer is: **there is no confidence score.**
+
+What the system has instead is a **lead completeness score** — a measure of how complete the enriched lead data was at the time of scoring. It answers: "did the Scoring Agent have enough data to work with?" — not "how certain is the LLM about its own output?"
+
+**Final decisions, all locked:**
+
+| Question | Answer |
+|---|---|
+| Is there a confidence score? | No |
+| What field is in the ScoringOutput? | `lead_completeness: float (0.0–1.0)` |
+| What does it measure? | Completeness of the enriched lead data passed to the Scoring Agent |
+| Who calculates it? | The Output Schema Layer (S2's intelligence layer), not the LLM |
+| Is it LLM self-reported certainty? | No — LLMs are poorly calibrated; self-reporting is not used |
+| Is it enrichment-score-derived? | No — that was ruled out as circular (see brainstorm below) |
+| Is it boundary-proximity-derived? | No — that proposal was set aside; completeness is simpler and more actionable |
+| What does it drive? | The `needs_review` flag. If `lead_completeness` is below a threshold → `needs_review = true` → lead routed to human review queue |
+| What is the threshold? | `[TBD — team decision; S2 suggests 0.6 or 0.75 as starting options]` |
+| Does the routing logic (≥80%, 50–79%, <50% bands) still exist? | Yes — same three bands, same routing behaviour. The input changed (completeness not confidence), but the bands and outcomes are unchanged |
+
+The full ScoringOutput schema is defined in [[sources/2026-intelligence-layer-design]] Section 3.4 and documented in [[concepts/intelligence-layer]].
+
+The correction is propagated across: [[concepts/confidence-first-class]], [[analyses/orchestration-layer-spec]] Section 4.3 and 5, [[analyses/governance-observability-layer]] Sections 2, 3.2, 5.3, and 10.
+
+**One item still open:** the exact lead completeness threshold — the value below which `needs_review` is set to true. This is a team decision after Month 1 baseline data.
+
+---
+
+## Brainstorm History (kept for context — shows why each approach was ruled out)
+
+This section documents the reasoning path that led to the resolution above.
+
+---
+
+## Context (2026-04-17 session)
 
 Confidence is Add-on 3 of the Lead Intelligence Engine v2.0. It was previously decided (2026-04-16) that confidence would be derived from the enrichment score. This session challenged that decision.
 
@@ -96,19 +131,15 @@ Confidence = how far the enrichment score sits from the nearest bucket boundary
 
 ---
 
-## What Is Still Unresolved
+## What Was Still Unresolved in April 2026
 
-### Blocker: Bucket Boundaries Are TBD
+At the time of the brainstorm, three things blocked a final answer:
 
-Confidence cannot be computed until HOT / WARM / COLD score thresholds are defined by the dev team. This is the primary open decision.
+1. Bucket boundaries were TBD (now locked: HOT ≥80, WARM ≥55, COLD <55)
+2. Whether signal coverage plays any role (ruled out — circular with enrichment score)
+3. Whether boundary proximity was the right framing (set aside — completeness is cleaner)
 
-### Open Questions to Resolve in Next Session
-
-1. **What are the bucket boundary thresholds?** (e.g., score ≥70 = HOT, 40–69 = WARM, <40 = COLD) — dev team to decide
-2. **How do we normalize boundary distance into a 0–100% confidence score?** (need a formula once boundaries are known)
-3. **Does signal coverage play any role at all?** Or is it already fully captured by the enrichment score?
-4. **Are the existing routing bands (≥80%, 50–79%, <50%) still the right thresholds** now that confidence means something different?
-5. **User clarity gap:** The user flagged they are not yet clear on the topic. Do not lock any decision until the user confirms understanding and agreement.
+All three are resolved. See Resolution section above.
 
 ---
 
@@ -123,7 +154,6 @@ Confidence cannot be computed until HOT / WARM / COLD score thresholds are defin
 
 ---
 
-## Follow-up Questions
-- Lock bucket boundaries (HOT/WARM/COLD thresholds) — this unlocks confidence formula
-- Revisit routing bands once confidence definition is finalised
-- Confirm with user that boundary-proximity framing makes intuitive sense before proceeding
+## Remaining Open Item
+
+- **Lead completeness threshold** — the exact value below which `needs_review = true`. S2 suggests 0.6 or 0.75 as starting options. Team decision after Month 1 baseline data.

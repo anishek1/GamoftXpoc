@@ -1,12 +1,12 @@
 ---
 type: concept
 name: "Confidence as First-Class Field"
-aliases: ["Add-on 3", "confidence score", "confidence routing"]
-tags: [scoring, confidence, ux, add-on-3, human-in-the-loop]
-source_count: 1
-last_updated: 2026-04-17
-confidence: low
-status: UNDER REVIEW — calculation method not locked, see analyses/confidence-scoring-brainstorm
+aliases: ["Add-on 3", "confidence score", "confidence routing", "lead completeness score", "needs_review"]
+tags: [scoring, confidence, completeness, ux, add-on-3, human-in-the-loop]
+source_count: 2
+last_updated: 2026-04-22
+confidence: medium
+status: CORRECTION APPLIED 2026-04-22 — "confidence" field is a lead completeness score; calculation method still being locked
 ---
 
 # Confidence as First-Class Field
@@ -30,21 +30,24 @@ The core insight: **two leads scoring 85 are not the same if one has 90% confide
 Every lead card shows: `score + confidence`  
 Example: "Score: 85 | Confidence: 72% — review recommended"
 
-## How Confidence Is Calculated
+## Correction (2026-04-22): This is a Lead Completeness Score, Not LLM Confidence
 
-`[UNDER REVIEW — 2026-04-17]` See full brainstorm: [[analyses/confidence-scoring-brainstorm]]
+**Confirmed decision:** The field previously called "confidence" is a **lead completeness score** — how complete and usable the enriched lead data is. It is **not** a measure of how certain the LLM is about its own scoring output.
 
-**Previous decision (2026-04-16):** Confidence derived from enrichment score threshold. This has been challenged.
+This resolves the circular-enrichment problem identified in the 2026-04-17 review: if missing signals already contribute 0 to the enrichment score, then LLM-self-reported confidence adds no new information and is poorly calibrated anyway.
 
-**Problem identified:** Enrichment-based confidence is circular. If missing signals already contribute 0 to the enrichment score, then confidence and enrichment score move in the same direction always — confidence adds no new information.
+**What lead completeness score measures:** the completeness of the enriched lead data passed into the scoring prompt — whether all five scoring dimensions have sufficient signal to reason over meaningfully.
 
-**Current best proposal:** Confidence = distance of the enrichment score from the nearest bucket boundary (HOT/WARM/COLD threshold). This captures something the enrichment score does not — how stable the bucket assignment is.
+**What it does NOT measure:** the LLM's own certainty about the score it assigned (LLMs are poorly calibrated on this).
 
-**Blocker:** Bucket thresholds are `[TBD]`. Confidence formula cannot be finalised until boundaries are locked.
+**Routing logic unchanged:** the `needs_review` flag and the three confidence bands still apply, but the input is lead data completeness, not LLM certainty.
+
+**Still open:** The exact formula for lead completeness and the threshold below which `needs_review = true` are not yet locked. See [[analyses/confidence-scoring-brainstorm]].
 
 **Still confirmed:**
 - LLM self-reported confidence is NOT used (LLMs are poorly calibrated)
-- Weighted signal coverage is NOT used (redundant with enrichment score)
+- Enrichment-score-as-confidence is NOT used (circular — it adds no new information)
+- Lead completeness score IS the field — definition and threshold `[TBD]`
 
 ## Edge Cases `[LOCKED]`
 
@@ -61,11 +64,13 @@ None. Previous open question around LLM self-reported confidence being poorly ca
 
 ## Related Concepts
 
-- [[concepts/lead-pipeline-architecture]] — confidence is output of Phase 05 (Agent E)
-- [[concepts/lineage-log]] — confidence stored per lead per step in lineage
-- [[concepts/disqualification-gate]] — disqualification applied before confidence routing
-- [[concepts/feedback-loop]] — feedback outcomes over time inform confidence calibration
+- [[concepts/intelligence-layer]] — Output Schema Layer applies the completeness gate; sets `needs_review = true`; `lead_completeness` is a field in ScoringOutput
+- [[concepts/lead-pipeline-architecture]] — completeness score is output of the Scoring Agent (Pipeline 1 stage 5)
+- [[concepts/lineage-log]] — completeness score stored per lead in lineage
+- [[concepts/disqualification-gate]] — disqualification applied before completeness routing
+- [[concepts/feedback-loop]] — feedback outcomes over time should inform completeness threshold calibration
 
 ## Sources
 
 - [[sources/2026-lead-intelligence-engine-reference]] — Sections 02, 04 (Add-on 3), 10.3, 10.4, 19.9
+- [[sources/2026-intelligence-layer-design]] — Section 3.4 Output Schema Layer; Section 7 (completeness gate open decision)

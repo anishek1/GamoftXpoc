@@ -3,9 +3,9 @@ type: analysis
 question: "Document the governance and observability layer: monitoring, auditability, lineage, feedback loops, quality tracking, and security controls."
 date: 2026-04-19
 tags: [governance, observability, security, quality, lineage, monitoring, auditability]
-sources_consulted: [sources/2026-lead-intelligence-engine-reference, raw/assets/lead_intelligence_manual_enrichment_playbook]
+sources_consulted: [sources/2026-lead-intelligence-engine-reference, raw/assets/lead_intelligence_manual_enrichment_playbook, sources/2026-intelligence-layer-design, sources/2026-core-business-entities]
 related: [analyses/orchestration-layer-spec, analyses/scoring-quality-metrics]
-status: COMPLETE
+status: COMPLETE — updated 2026-04-22 with S1 (data entity model) and S2 (intelligence layer design)
 ---
 
 # Governance and Observability Layer
@@ -59,11 +59,11 @@ Nothing in the governance layer is in the critical path of a pipeline run. All j
 | Per-agent duration | Time spent in each stage (data gather, enrichment, normalise, scoring) | Isolates which stage is the bottleneck when total duration rises |
 | Leads processed | Total leads in run | Baseline denominator for all rate metrics |
 | Leads delivered | Reached `delivered` state | Confirms the pipeline is producing usable output |
-| Leads flagged | Routed to `human_review` (confidence < 50% or scoring_failed) | High flag rate = the Scoring Agent is uncertain; needs investigation |
+| Leads flagged | Routed to `human_review` (lead_completeness < threshold, or scoring_failed) | High flag rate = enrichment is producing thin data for too many leads; needs investigation |
 | Leads failed | Reached `failed` state after retries exhausted | Persistent failures mean enrichment or LLM infrastructure problems |
 | Source success/failure | Per-channel: success, failure, incomplete_fetch | Identifies which channel is broken without stopping the run |
 | API quota consumed | Per channel per tenant, per run | Prevents quota exhaustion from going unnoticed |
-| Confidence distribution | Spread across ≥80%, 50–79%, <50% bands | A shift toward low confidence is an early signal of prompt or signal drift |
+| Lead completeness distribution | Spread across ≥80%, 50–79%, <50% bands | A shift toward low completeness means enrichment is collecting less data per lead — early signal of source degradation or enrichment failure. This is not LLM confidence; see [[concepts/confidence-first-class]] for the full explanation |
 | Bucket distribution | HOT / WARM / COLD counts per run | Sudden change in distribution = lead mix changed or scoring drifted |
 
 **Per-tenant (Pipeline 2) — written at each onboarding stage:**
@@ -103,7 +103,7 @@ Alerts trigger notifications to team lead. All thresholds are `[TBD — team inp
 | Pipeline failure rate | > 5% leads reaching `failed` state | High | Persistent failures indicate a systemic infrastructure problem, not noise |
 | Human review queue | > 20% leads routed to `human_review` in a run | Medium | High flag rate = low Scoring Agent confidence; signals prompt or data quality issue |
 | HOT lead SLA breach | Any HOT lead uncontacted after 24h | High | HOT leads are the highest-value output; even one breach is a direct business loss |
-| Confidence distribution | > 50% leads below 50% confidence in a run | Medium | If the system is uncertain about more than half the leads, the scoring inputs are unreliable |
+| Lead completeness distribution | > 50% leads below 50% completeness in a run | Medium | If enrichment is failing to collect enough data on more than half the leads, the scoring inputs are unreliable — this is a data collection problem, not an LLM problem |
 | All sources fail | Any run where all channels return failure | Critical | Zero leads in = zero leads out; the entire pipeline is blocked |
 | Pipeline 2 failure | Any LLM agent in onboarding fails | High | A failed onboarding blocks Pipeline 1 from running for that tenant |
 
@@ -128,28 +128,47 @@ Every action in the system must be traceable to: **who** triggered it, **what** 
 
 Mixing them into one table makes it impossible to answer either cleanly. A query for "every step taken on lead X" would return both system events and user events, requiring complex filtering to separate them. Keeping them separate means each table has a single, unambiguous purpose — and each can be indexed and queried optimally for its specific access pattern.
 
-**Surface 1 — `pipeline_log` (transformation audit):**
+**Surface 1 — Transformation audit (three tables, confirmed by S1):**
 
-Records every data transformation per lead per stage across both pipelines. Written by the orchestrator after every tool call.
+What this document previously called `pipeline_log` is actually three separate entities in S1's data model. Each answers a different audit question:
+
+**`pipeline_run`** — "Did the whole workflow succeed?"
+
+One record per complete pipeline execution (one Pipeline 1 run or one Pipeline 2 onboarding). Tells you when it started, when it finished, what type of pipeline it was, and whether the full process succeeded or failed. This is where you look when a tenant asks "did my leads get processed today?"
+
+**`task_execution`** — "Which stage failed, and why?"
+
+One record per stage inside a pipeline run. If a run fails, `pipeline_run` tells you the run failed — `task_execution` tells you it was specifically the Lead Enrichment stage that timed out on lead #47, retried twice, and then gave up. Most failures happen at the step level, not the whole run level.
 
 | Field | Description |
 |---|---|
-| `run_id` | Unique ID for this pipeline run |
-| `lead_id` | Which lead (null for Pipeline 2 entries) |
-| `agent_id` | Which component produced this entry |
+| `run_id` | Which pipeline run this stage belongs to |
+| `lead_id` | Which lead (null for Pipeline 2 stages) |
+| `agent_id` | Which tool or agent ran this stage |
 | `tenant_id` | Which tenant |
 | `pipeline` | `onboarding` or `lead_processing` |
-| `timestamp` | When the entry was written |
-| `input_snapshot` | Exact input sent to the agent |
-| `output_snapshot` | Exact output the agent returned |
-| `duration_ms` | Execution time |
-| `prompt_version` | Active prompt version (LLM agents only, null otherwise) |
-| `confidence` | Confidence at this step (null for pre-scoring stages) |
+| `timestamp` | When the stage ran |
+| `duration_ms` | Execution time for this stage |
+| `status` | success / failure |
+| `retry_count` | How many retries happened |
 | `error` | Error string on failure, null on success |
 
-Full schema: `[TBD from S1 — pipeline_log schema ticket]`
+**`lineage_record`** — "Where did this output come from and how was it produced?"
 
-Immutable — entries are never updated or deleted. Append-only.
+The data provenance chain. One record per stage, linking the input that went in to the output that came out. This is what makes a disputed score debuggable — you can trace back from the final score to every signal value that was extracted, the prompt version that was used, and the raw enrichment data that fed into it.
+
+| Field | Description |
+|---|---|
+| `run_id` | Which run |
+| `lead_id` | Which lead |
+| `agent_id` | Which tool produced this transformation |
+| `tenant_id` | Which tenant |
+| `input_snapshot` | Exact input sent to the tool |
+| `output_snapshot` | Exact output the tool returned |
+| `prompt_version` | Active prompt version — null for non-LLM tools |
+| `lead_completeness` | Lead completeness score at this step — null before scoring stage. **Note: this field was previously called `confidence`. It is not LLM confidence — it is the completeness of the enriched lead data. See [[concepts/confidence-first-class]].** |
+
+All three tables are immutable — entries are never updated or deleted. Append-only. Concurrent writes across parallel leads are safe because each entry is unique on (run_id, lead_id, stage).
 
 **Surface 2 — `access_log` (user action audit):**
 
@@ -191,11 +210,11 @@ Full lineage documentation is in [[analyses/orchestration-layer-spec]] Section 8
 
 - Written by the orchestrator — NOT by individual tools
 - Written after every tool call, every stage, both pipelines
-- Stored in `pipeline_log` — same table as audit Surface 1 (one table serves both purposes)
+- Stored across three S1 entities: `pipeline_run` (run-level), `task_execution` (step-level), `lineage_record` (data provenance). The `lineage_record` entity is specifically what answers "where did this output come from?"
 - Concurrent writes are safe — each entry unique on `(run_id, lead_id, stage)`
-- Used by the deferred Adaptive Signal Lifecycle (Add-ons 6/7/8) — it reads lineage to discover signal patterns and audit signal extraction accuracy
+- Used by the deferred Adaptive Signal Lifecycle (Add-ons 6/7/8) — reads `lineage_record` entries to discover signal patterns and audit signal extraction accuracy
 
-**Why one table serves both purposes (lineage and audit):** Both lineage and audit record the same underlying event — a tool call with an input and an output. The difference is the question asked of the data. Audit asks: *was this action legitimate?* Lineage asks: *why did this score turn out this way?* The same row answers both questions. A second table would duplicate the data and create a synchronisation risk.
+**How audit and lineage relate in the three-entity model:** `task_execution` answers audit questions (was this action taken? did it succeed?). `lineage_record` answers provenance questions (what went in, what came out, which prompt was used?). `pipeline_run` answers run-level questions (did the business process complete?). The three tables together replace what was previously referred to as a single `pipeline_log`.
 
 **Lineage build rule `[LOCKED]`:** Build lineage BEFORE adding the second LLM agent.
 
@@ -280,12 +299,17 @@ CREATE TABLE attributed_feedback (
   signal_version      TEXT        NOT NULL,
   prompt_version      TEXT        NOT NULL,
   fired_signals       JSONB,
-  dimension_scores    JSONB,
-  explanation_reasons TEXT[],
-  confidence          INTEGER,
+  sub_scores          JSONB,
+  reasoning           TEXT,
+  lead_completeness   NUMERIC(4,3),   -- 0.000 to 1.000; pulled from lineage_record
   timestamp           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
+
+Field notes (updated from S1 + S2):
+- `sub_scores` replaces `dimension_scores` — this matches the `sub_scores` object in S2's ScoringOutput schema
+- `reasoning` replaces `explanation_reasons TEXT[]` — S2's Output Schema Layer returns a single reasoning string, not an array
+- `lead_completeness NUMERIC(4,3)` replaces `confidence INTEGER` — this is completeness of the enriched lead data (0.0–1.0), not LLM self-assessed certainty. Pulled from the `lineage_record` entry for the scoring stage.
 
 **Why attribution matters:** Raw thumbs down is useless. Attributed thumbs down tells you WHERE the system went wrong — was it the signal definition, the prompt, or the weight? Without attribution, the recommendation to the team lead would be "something is wrong" — with attribution, it is "signal version 2.1 appears in 7 of the 9 wrong-bucket leads this week, and `pricing_intent` fired in all 7."
 
@@ -299,7 +323,7 @@ CREATE TABLE attributed_feedback (
 | Group by `prompt_version` | Which prompt version appears most in wrong-bucket leads? |
 | Group by `fired_signals` | Which signal combinations consistently produce wrong scores? |
 | Group by `explanation_reasons` | Which reasons keep appearing in leads that didn't convert? |
-| Group by `confidence` band | Are confident scores (≥80%) still producing wrong buckets? |
+| Group by `lead_completeness` band | Are high-completeness scores (≥80%) still producing wrong buckets? If they are, the issue is the signal weights or prompt — not data quality |
 
 **Why weekly, not daily:** Daily pattern detection on a small tenant (20–50 leads/day) would fire on samples too small to distinguish a real pattern from random variation. A week of data produces enough volume to identify a repeating pattern with confidence. For high-volume tenants, the cadence can be shortened — but weekly is the correct starting point.
 
@@ -315,7 +339,7 @@ Recommended approach: fixed count. When N leads sharing the same signal version 
 Signal version 2.1 → 7 wrong-bucket leads
   Most common fired signal: pricing_intent = true (in 6 of 7 leads)
   Most common reason: "Requested pricing twice in 48 hours"
-  Confidence distribution: 5 leads were ≥80% confidence (system was sure, but wrong)
+  Lead completeness: 5 leads had ≥80% completeness (enrichment was full — the problem was the signal weights or prompt, not missing data)
 
 Prompt version 1.3 → 5 wrong-bucket leads (Gamoft tenant only)
 ```
@@ -654,7 +678,9 @@ Queries always filter `WHERE deleted_at IS NULL`.
 
 ---
 
-## 8. New Tables Added by Governance Layer
+## 8. Full Table Map — Governance Layer
+
+### Tables added by governance
 
 | Table | Purpose | Defined in |
 |---|---|---|
@@ -663,14 +689,44 @@ Queries always filter `WHERE deleted_at IS NULL`.
 | `user_roles` | RBAC role assignments (4 roles) | Section 7.4 |
 | `attributed_feedback` | Feedback enriched with lineage data | Section 5.3 |
 
-These are in addition to tables already defined by S1 (`leads`, `pipeline_log`, `tenant_config`, `personas`, `signal_definitions`, `feedback_events`, `prompt_registry`).
+### Tables and entities owned by S1 (updated from entity catalog 2026-04-22)
+
+What was previously listed as a single `pipeline_log` table is now three formal S1 entities:
+
+| S1 entity | Purpose | Replaces |
+|---|---|---|
+| `pipeline_run` | One record per complete workflow execution — run-level success/failure | pipeline_log run header |
+| `task_execution` | One record per stage per run — step-level status, retries, errors | pipeline_log stage rows |
+| `lineage_record` | Data provenance chain — input/output per stage, prompt_version, lead_completeness | pipeline_log transformation rows |
+
+Other confirmed S1 entities referenced by this document:
+
+| S1 entity | Referenced in |
+|---|---|
+| `leads` | Section 2 (pipeline_stage transitions), Section 7 (RLS) |
+| `tenant` | Section 7 (tenant isolation, RBAC) |
+| `business_profile` + `ideal_customer_profile` | Section 5.7 (proactive check-in triggers re-run) |
+| `business_profile_version` + `ideal_customer_profile_version` | Section 5.3 (attribution — which ICP was active when score was produced) |
+| `signal` + `signal_evaluation` | Section 5 (attribution pulls signal_version from lineage) |
+| `feedback_record` | Section 5.2 (collection — formal entity for raw feedback) |
+| `lead_score` | Section 5 (what feedback is given on) |
+| `score_model_version` | Section 5.3 (attribution — which scoring logic version was active) |
+| `audit_log` | Section 3.2 (access_log maps to this entity) |
+| `quality_rule` + `quality_check_result` | Section 6 (quality tracking formal entity model) |
 
 ---
 
 ## 9. Open Questions
 
+Updated 2026-04-22 — items resolved by S1 and S2 are marked.
+
 | Item | Status |
 |---|---|
+| `pipeline_log` schema | **RESOLVED** — three S1 entities: pipeline_run, task_execution, lineage_record. See Section 3.2 and 4. |
+| `confidence` field name and type | **RESOLVED** — field is `lead_completeness NUMERIC(4,3)` (0.0–1.0). Not LLM confidence. See [[concepts/confidence-first-class]]. |
+| Scoring Agent output schema | **RESOLVED** — all field names and types locked by S2. See [[analyses/orchestration-layer-spec]] Section 4.3. |
+| `feedback_record`, `lineage_record`, `quality_rule`, `quality_check_result` as formal entities | **RESOLVED** — all confirmed in S1 entity catalog. |
+| `leads.assigned_to` field existence + type | Still `[TBD from S1]` — not explicitly listed in the S1 entity catalog. S1 needs to confirm whether this field is on the `lead` entity or managed through a separate assignment table. |
 | Monitoring alert thresholds | `[TBD — team input after Month 1 baseline]` |
 | Alert delivery mechanism (chat/email/both) | `[TBD — team decision]` |
 | Observability tooling (Grafana/Datadog/custom) | `[TBD]` |
@@ -678,12 +734,12 @@ These are in addition to tables already defined by S1 (`leads`, `pipeline_log`, 
 | Secrets vault choice (AWS Secrets Manager vs HashiCorp) | `[TBD — infra decision]` |
 | PII encryption library per backend | `[TBD — depends on backend language choice]` |
 | Auth library choice | `[TBD — depends on backend language choice]` |
-| `leads.assigned_to` field existence + type | `[TBD from S1]` |
 | Quality snapshot retention | `[TBD — suggest 1 year]` |
 | Tenant check-in cadence | `[TBD — suggest 2-week or monthly; team decision]` |
 | Check-in recipient | `[TBD — team_lead assumed; confirm with team]` |
 | Check-in message wording | `[TBD — per tenant language preference; matches Confirmation UX language setting]` |
 | Flagging threshold for pattern detection (value of N) | `[TBD — team decision after Month 1 data]` |
+| Lead completeness threshold for needs_review | `[TBD — S2 suggests 0.6 or 0.75 as starting options; team decision]` |
 
 ---
 
@@ -693,13 +749,19 @@ These are in addition to tables already defined by S1 (`leads`, `pipeline_log`, 
 |---|---|
 | Governance layer cross-cuts both pipelines, not in critical path | Team decision 2026-04-19 |
 | Failure in governance layer must not halt pipelines | Team decision 2026-04-19 |
-| Two audit surfaces: pipeline_log (transformations) + access_log (user actions) | Team decision 2026-04-19 |
+| Transformation audit is three S1 entities (pipeline_run, task_execution, lineage_record) — not one pipeline_log | S1 entity catalog 2026-04-22 |
+| User action audit is `access_log` — maps to S1's `audit_log` entity | S1 entity catalog 2026-04-22 |
 | Lineage written by orchestrator only — not by individual tools | Team decision 2026-04-19 |
 | Lineage must be built before adding the second LLM agent | Team decision 2026-04-19 |
+| The field previously called `confidence` in lineage is `lead_completeness` (float 0.0–1.0) — not LLM confidence | S2 intelligence layer design 2026-04-22 |
 | Feedback loop is 3 steps: collection → attribution → pattern detection → recommendation | Team decision 2026-04-19 |
 | Attribution fires immediately on every feedback event — not batched | Team decision 2026-04-19 |
+| `attributed_feedback` uses `sub_scores` (JSONB) and `reasoning` (TEXT) — not `dimension_scores` and `explanation_reasons[]` | S2 output schema 2026-04-22 |
+| `attributed_feedback` uses `lead_completeness NUMERIC(4,3)` — not `confidence INTEGER` | S2 output schema 2026-04-22 |
 | Pattern detection is weekly — fixed count threshold, not rate-based | Team decision 2026-04-19 |
 | System suggests feedback-driven actions — team lead always approves | `[LOCKED principle]` |
+| No separate human_review_queue table — leads table filtered by pipeline_stage = 'human_review' | S1 entity catalog 2026-04-22 |
+| `feedback_record`, `lineage_record`, `quality_rule`, `quality_check_result` are formal S1 entities | S1 entity catalog 2026-04-22 |
 | Proactive tenant check-in via chat on recurring schedule | Team decision 2026-04-19 |
 | Check-in triggers ICP + Signal Agent re-run on significant change (human-approved) | Team decision 2026-04-19 |
 | Check-in logged to access_log | Team decision 2026-04-19 |
@@ -708,7 +770,7 @@ These are in addition to tables already defined by S1 (`leads`, `pipeline_log`, 
 | Quality snapshots stored in `quality_snapshots` table | Team decision 2026-04-19 |
 | Weight adjustments human-reviewed monthly, not automated | Source ref + playbook |
 | Three-layer security: RLS + JWT + RBAC | Team decision 2026-04-19 |
-| Postgres RLS on every tenant-scoped table | Team decision 2026-04-19 |
+| Postgres RLS on every tenant-scoped table — applies to all S1 entities with tenant_id | Team decision 2026-04-19 |
 | JWT with tenant_id + role claims | Team decision 2026-04-19 |
 | 4 roles: admin, team_lead, salesperson, viewer | Team decision 2026-04-19 |
 | team_lead is tenant-scoped — each tenant has own team lead | Team decision 2026-04-19 |

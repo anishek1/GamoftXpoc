@@ -1,12 +1,12 @@
 ---
 type: overview
-last_updated: 2026-04-19
-source_count: 1
+last_updated: 2026-04-22
+source_count: 3
 ---
 
 # Knowledge Base Overview
 
-**Last updated:** 2026-04-19 | **Sources ingested:** 1
+**Last updated:** 2026-04-22 | **Sources ingested:** 3
 
 ## What This Wiki Is About
 
@@ -20,9 +20,9 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 
 **The measurement system is now fully documented and connected to the execution system.** The orchestrator writes lineage after every stage of every lead. Scheduled SQL jobs read that lineage to compute quality metrics at three cadences (per-run, weekly, monthly). Results flow into three Global KPIs (System Health, Business Health, Tenant Health Rate). Team lead and product owner reviews close the loop back to the orchestrator — recalibrating bucket thresholds, signal weights, or triggering Pipeline 2 re-runs. The full lifecycle is diagrammed in [[analyses/orchestration-layer-spec]] Section 5.1.
 
-**What's locked:** The 5 design principles, the two-pipeline architecture, 4 LLM agents (Onboarding, ICP, Signal, Scoring), deterministic signal extraction, fill-in-the-blanks prompt mechanism, bucket thresholds (80/55/0 — starting points), 5 Add-ons, Postgres state store, serial build order, governance layer failure must not halt pipelines, system proposes / human approves on all config changes.
+**What's locked:** The 5 design principles, the two-pipeline architecture, 4 LLM agents (Onboarding, ICP, Signal, Scoring), deterministic signal extraction, fill-in-the-blanks prompt mechanism, bucket thresholds (80/55/0 — starting points), 5 Add-ons, Postgres state store, serial build order, governance layer failure must not halt pipelines, system proposes / human approves on all config changes. The Intelligence Layer's four-component internal design (Persona Engine → Prompt Layer → Rating Agent → Output Schema Layer) and its `score_lead()` interface are now specified. The full data entity catalog (32 entities across 3 groups) is now documented. The five scoring dimensions (Fit 25%, Intent 25%, Engagement 20%, Behaviour 20%, Context 10%) and their default weights are locked.
 
-**What's changed from original source doc:** Pipeline count (1 → 2), LLM agent count (1 → 4), bucket thresholds (75/45 → 80/55), pipeline stage names updated, Governance Layer added as explicit cross-cutting layer, quality metrics fully wired to orchestration layer.
+**What's changed from original source doc:** Pipeline count (1 → 2), LLM agent count (1 → 4), bucket thresholds (75/45 → 80/55), pipeline stage names updated, Governance Layer added as explicit cross-cutting layer, quality metrics fully wired to orchestration layer. **Correction (2026-04-22):** The "confidence" field in the intelligence layer design is a **lead completeness score**, not LLM self-assessed confidence. LLMs are poorly calibrated; the field measures completeness of enriched lead data instead. Routing logic and `needs_review` flag are unchanged.
 
 **What's deferred:** The Adaptive Signal Lifecycle (Add-ons 6/7/8) — requires 2-3 months of real production data.
 
@@ -31,14 +31,17 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 ## Major Themes
 
 - **[[concepts/lead-pipeline-architecture]]** — two-pipeline architecture; Pipeline 2 one-time setup, Pipeline 1 per-lead; pipeline output feeds the quality metrics layer
+- **[[concepts/intelligence-layer]]** — four-component internal pipeline (Persona Engine → Prompt Layer → Rating Agent → Output Schema Layer); single `score_lead()` entry point; 60-second hard timeout; never writes to data layer directly
+- **[[concepts/signal-types]]** — five scoring dimensions (Fit 25%, Intent 25%, Engagement 20%, Behaviour 20%, Context 10%); defaults overridden per tenant via persona; both data model (`signal`, `signal_evaluation`) and prompt structure
+- **[[concepts/data-entity-model]]** — 32 entities in 3 groups: core lead lifecycle (15), governance & quality (6), operational observability & delivery (11)
 - **[[concepts/agent-vs-tool-classification]]** — 4 LLM agents (3 in Pipeline 2, 1 in Pipeline 1); 1 LLM call per lead preserved
-- **[[concepts/persona-layer]]** — per-tenant rich business profile; produced by Onboarding Agent in Pipeline 2
-- **[[concepts/confidence-first-class]]** — confidence as user-visible field; 3-band routing (≥80% auto-assign, 50–79% flag, <50% human review); bands directly feed per-run confidence distribution KPI
-- **[[concepts/lineage-log]]** — non-negotiable audit trail; written by orchestrator at every stage, both pipelines; primary data source for all scoring quality metrics
+- **[[concepts/persona-layer]]** — per-tenant rich business profile; produced by Onboarding Agent in Pipeline 2; built and cached by Persona Engine (first component of intelligence layer); versioning confirmed
+- **[[concepts/confidence-first-class]]** — **corrected 2026-04-22**: this is a lead completeness score, not LLM confidence; routing and `needs_review` flag unchanged; threshold `[TBD]`
+- **[[concepts/lineage-log]]** — non-negotiable audit trail; written by orchestrator at every stage, both pipelines; primary data source for all scoring quality metrics; backed by `lineage_record` entity
 - **[[concepts/disqualification-gate]]** — score gates before bucketing; prevents wrong leads reaching HOT
 - **[[concepts/score-decay]]** + **[[concepts/action-sla]]** — temporal enforcement; SLA breach → alert; decay coherence tracked via C4 metric
 - **[[concepts/capability-registry]]** — drives Pipeline 1 tool sequence; zero orchestrator changes per new use case
-- **[[concepts/feedback-loop]]** — 3-step enforcement (attribution → pattern detection → team lead recommendation); now fully documented with how/why for each step
+- **[[concepts/feedback-loop]]** — 3-step enforcement (attribution → pattern detection → team lead recommendation); backed by `feedback_record` entity
 - **[[concepts/adaptive-signal-lifecycle]]** — deferred to Sprint 2-3; needs real production data
 
 ## Key Analyses — Documentation State
@@ -49,21 +52,23 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 | [[analyses/governance-observability-layer]] | COMPLETE | All 6 domains with correct section ordering and numbering; full how/why reasoning throughout; 3-step feedback loop; 3-layer security |
 | [[analyses/scoring-quality-metrics]] | COMPLETE | Score Coverage + Accuracy Proxy (AP1–AP3) + Consistency (C1–C5) + Action Relevance (AR1–AR5) + 3 Global KPIs; now cross-referenced from both other docs |
 | [[analyses/orchestration-layer-dependencies]] | COMPLETE | 3 hard blockers (S1: pipeline_stage values + pipeline_log schema; S2: Scoring Agent output schema) |
-| [[analyses/confidence-scoring-brainstorm]] | IN PROGRESS | Confidence calculation method unresolved; blocked on bucket threshold decisions |
+| [[analyses/confidence-scoring-brainstorm]] | IN PROGRESS | Now tracking lead completeness score (not LLM confidence); formula and threshold still unresolved |
+| [[sources/2026-intelligence-layer-design]] | INGESTED 2026-04-22 | Intelligence Layer design spec: 4-component pipeline, score_lead() interface, 5 scoring dimensions, open decisions |
+| [[sources/2026-core-business-entities]] | INGESTED 2026-04-22 | Full data entity catalog: 32 entities across lead lifecycle, governance, and operational observability |
 
 ## Key Entities
 
 - [[entities/gamoft]] — builder and B2B self-tenant; AWS likely; tech stack TBD
-- [[entities/urvee-organics]] — B2C tenant; Instagram + WhatsApp; persona TBD
+- [[entities/urvee-organics]] — B2C tenant; Instagram + WhatsApp; persona TBD; consent_preference entity especially relevant for their channels
 - [[entities/govmen]] — third tenant; everything TBD
 - [[entities/anishekh]] — project lead and document owner
 
 ## Open Questions
 
-1. **Signal detection_rule format:** How are signal values extracted deterministically? What evaluation engine? `[TBD from S2]` — hard blocker for orchestrator Lead Enrichment stage
+1. **Signal detection_rule format:** How are signal values extracted deterministically? What evaluation engine? `[TBD from S2]` — hard blocker for orchestrator Lead Enrichment stage. Now also a hard blocker for the `signal` entity schema in the data model.
 2. **Pipeline 2 re-run triggers:** Proactive check-in cadence (2-week or monthly?) and feedback-driven flagging threshold (fixed count N = ?) `[TBD — team decision after Month 1]`
-3. **Confidence calculation method:** Still unresolved — see [[analyses/confidence-scoring-brainstorm]]; blocked on bucket threshold finalisation
-4. **Technology stack:** Backend language, LLM provider, secrets vault (AWS vs HashiCorp), observability tooling (Grafana/Datadog/custom) — all `[TBD]`
+3. **Lead completeness score formula and threshold:** Confirmed it's completeness (not LLM confidence) — see [[analyses/confidence-scoring-brainstorm]]; formula and `needs_review` threshold `[TBD]`
+4. **Technology stack:** Backend language, LLM provider (Groq vs OpenAI — open decision in intelligence layer spec), model config scope (global vs per-tenant), prompt storage (code vs data layer), secrets vault (AWS vs HashiCorp), observability tooling — all `[TBD]`
 5. **Tenant personas:** All three personas `[TBD]` — Govmen profile entirely unknown; Urvee-Organics and Gamoft need signal weight configuration
 6. **Scoring Agent concurrency cap:** Recommend 5 — needs team decision based on LLM provider rate limits
 7. **Concurrency guard timeout threshold:** Recommend 15–30 min — needs team decision balancing false recovery vs slow recovery
@@ -71,6 +76,9 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 9. **Bucket threshold calibration:** 80/55/0 confirmed as starting points; AP1 and AP2 drive recalibration after Month 1
 10. **S1/S2 hard blockers:** `leads.pipeline_stage` accepted values (S1), `pipeline_log` schema (S1), Scoring Agent output JSON schema incl. confidence field format (S2)
 11. **~50 additional TBDs** in Section 16 of [[sources/2026-lead-intelligence-engine-reference]]
+
+11. **Intelligence layer open decisions:** Primary LLM provider, model config scope, prompt storage location, custom rules format (free-text vs structured pre-LLM execution), bucket disagreement handling — 6 open decisions from [[sources/2026-intelligence-layer-design]] Section 7.
+12. **Data entity open questions:** `signal` entity schema (detection_rule format); `quality_rule` storage format; relationship between `report_definition` and `dashboard_definition`; `alert_incident` creation trigger.
 
 ## What to Read Next
 

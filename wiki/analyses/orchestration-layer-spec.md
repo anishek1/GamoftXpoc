@@ -3,9 +3,9 @@ type: analysis
 question: "Document orchestration controller, tool invocation, and state tracking responsibilities."
 date: 2026-04-19
 tags: [orchestration, system-layer, subtask-3, spec, controller, state-tracking, tool-invocation, two-pipeline]
-sources_consulted: [sources/2026-lead-intelligence-engine-reference, raw/assets/lead_intelligence_manual_enrichment_playbook]
+sources_consulted: [sources/2026-lead-intelligence-engine-reference, raw/assets/lead_intelligence_manual_enrichment_playbook, sources/2026-intelligence-layer-design, sources/2026-core-business-entities]
 related: [analyses/orchestration-layer-dependencies, analyses/governance-observability-layer]
-status: COMPLETE
+status: COMPLETE — updated 2026-04-22 with S1 (data entity model) and S2 (intelligence layer design)
 ---
 
 # S3 — Orchestration Layer
@@ -162,14 +162,17 @@ Using the persona, the ICP Agent defines who the best leads look like:
 {
   tenant_id
   icp_description       : narrative of the ideal buyer
-  priority_signals      : what to weight most
-  disqualifying_signals : what eliminates a lead immediately
+  target_segment        : industry, company size, geography, role profile
+  priority_signals      : what to weight most (feeds into scoring_weights)
+  disqualifying_signals : what eliminates a lead immediately (feeds into banding rules)
   buying_triggers       : events that signal readiness to buy
   icp_examples          : example leads (real or synthetic)
 }
 ```
 
-Schema: `[TBD from S2]`
+The ICP output is stored as the `ideal_customer_profile` entity in S1's data model and also captured inside the PersonaObject as the `icp: IcpDefinition` field — so the Persona Engine always has it available without a separate lookup. S1 also versions every ICP snapshot in `ideal_customer_profile_version`, which means when Pipeline 2 re-runs and produces a new ICP, the system can explain which ICP definition was active when any historical score was produced.
+
+Stored in: `ideal_customer_profile` table (S1)
 
 ---
 
@@ -195,13 +198,17 @@ Each signal is stored as:
   dimension            : fit | intent | engagement | behavioral | context
   name                 : "pricing_request"
   description          : "Lead explicitly asked for pricing or a quote"
-  detection_rule       : how to extract this signal's value  [TBD from S2]
+  detection_rule       : [TBD — format not yet locked; see open decisions]
   weight_within_dim    : float
   applicable_to        : B2B | B2C | both
 }
 ```
 
-Stored in: `signal_definitions` table
+S1 has formally confirmed `signal` and `signal_evaluation` as distinct data entities. `signal` stores the question (what to look for). `signal_evaluation` stores the per-lead answer (what was actually found). These are the data model backing the fill-in-the-blanks mechanism.
+
+The `detection_rule` format is `[TBD]`.
+
+Stored in: `signal` table (S1 entity)
 
 ---
 
@@ -418,32 +425,48 @@ ENGAGEMENT SIGNALS:
 [Return JSON: bucket, total_score, dimension_scores, explanation_reasons, suggested_action, confidence]
 ```
 
-**What the Scoring Agent must return:**
+**What the Scoring Agent returns — now locked by S2:**
+
+S2's intelligence layer design has defined the full output schema. Here it is, with field-by-field explanation:
 
 ```json
 {
-  "bucket": "HOT",
-  "total_score": 84,
-  "dimension_scores": {
-    "fit": 8,
-    "intent": 9,
-    "engagement": 8,
-    "behavioral": 6,
-    "context": 7
+  "score": 84,
+  "bucket": "hot",
+  "reasoning": "Strong ICP fit and explicit high-intent signals (pricing, timeline, scope) from a multi-channel active lead — recommend immediate outreach.",
+  "lead_completeness": 0.87,
+  "sub_scores": {
+    "fit": 21,
+    "intent": 22,
+    "engagement": 17,
+    "recency": 15
   },
-  "explanation_reasons": [
-    "Requested pricing twice in 48 hours",
-    "Visited product page 3 times this week",
-    "Decision maker confirmed"
-  ],
-  "suggested_action": "Call today — high intent, strong fit",
-  "confidence": 87
+  "recommended_action": "Call today — high intent, strong fit",
+  "needs_review": false,
+  "schema_version": "v1.0",
+  "prompt_version": "v1.3.0",
+  "model": "gpt-4o"
 }
 ```
 
-Dimension scores are always shown separately — they are never collapsed into one number. A lead that is high on intent but low on fit needs completely different action than the reverse.
+**What each field means:**
 
-Output schema: **`[TBD from S2 — especially the confidence field name and format]`**
+| Field | Type | Description |
+|---|---|---|
+| `score` | int (0–100) | The overall lead score |
+| `bucket` | string (lowercase) | `hot`, `warm`, or `cold` — the Output Schema Layer also validates this against the banding rule |
+| `reasoning` | string | One-line explanation of why the lead got this score |
+| `lead_completeness` | float (0.0–1.0) | How complete the enriched lead data was. **This is not LLM confidence.** It measures whether the Scoring Agent had enough data to work with — not how certain it is about its own reasoning. A score of 0.87 means 87% of expected signal fields were present and populated |
+| `sub_scores` | object | Per-dimension breakdown. Always included — never collapsed into a single number |
+| `recommended_action` | string | Specific suggested next step for the salesperson |
+| `needs_review` | bool | Set to `true` by the Output Schema Layer when `lead_completeness` is below the configured threshold. When `true`: score is still stored and the lead is still delivered — but it is also routed to the human review queue |
+| `schema_version` | string | Which version of the output schema this response conforms to |
+| `prompt_version` | string | Which prompt template was used. Enables attribution in the feedback loop |
+| `model` | string | Which model produced this output |
+
+**One note on sub_scores:** S2's design doc lists four sub-score fields (fit, intent, engagement, recency). This does not match the five scoring dimensions (Fit, Intent, Engagement, Behaviour, Context). S2 should clarify whether behavioural and context scores are collapsed into engagement, or whether sub_scores needs to be extended to five fields. **This is a soft blocker for how the orchestrator reads and logs dimension scores.**
+
+Dimension scores are always shown separately — they are never collapsed into one number. A lead that is high on intent but low on fit needs completely different action than the reverse.
 
 **Scoring Agent failure handling:**
 
@@ -482,15 +505,19 @@ Some conditions override the score entirely, regardless of what the Scoring Agen
 
 Exact disqualification rules: `[TBD per tenant]`
 
-**Confidence routing (runs after bucketing):**
+**Lead completeness routing (runs after bucketing):**
 
-| Confidence level | What happens | Why this threshold |
+The `needs_review` flag in the ScoringOutput (set by S2's Output Schema Layer) is what drives routing here. The Output Schema Layer reads `lead_completeness` and sets `needs_review = true` if it falls below a configured threshold. The orchestrator reads `needs_review` and acts on it.
+
+| Lead completeness | What happens | Why this threshold |
 |---|---|---|
-| ≥ 80% | Auto-assign bucket, write to output — no human needed | High confidence means the Scoring Agent had strong signal coverage and clear dimension separation — human review adds no value |
-| 50–79% | Assign bucket but add a WARNING flag — salesperson can review | Moderate confidence means at least one dimension had weak or missing signals — the bucket is likely correct but worth a second look |
-| < 50% | Do not auto-bucket — route to human review queue | Low confidence means the system cannot reliably distinguish between buckets for this lead — an automated assignment would be worse than no assignment |
+| ≥ 80% | Auto-assign bucket, write to output — no human needed | High completeness means the Scoring Agent had enough signal data and strong dimension coverage — human review adds no value |
+| 50–79% | Assign bucket but add a WARNING flag — salesperson can review | Moderate completeness means at least one dimension had weak or missing signals — the bucket is likely correct but worth a second look |
+| < 50% | `needs_review = true` — route to human review queue | Low completeness means the system was scoring from thin data and cannot reliably distinguish between buckets for this lead |
 
-**How these bands connect to quality metrics:** The split of leads across the three confidence bands is captured as the per-run confidence distribution metric (computed at the end of every Pipeline 1 run and written to `quality_snapshots`). A run where more than 50% of leads fall below 50% confidence triggers an alert — it signals that the Scoring Agent is uncertain about too many leads in the batch, which is an early indicator of prompt drift, signal extraction failures, or data quality problems. See [[analyses/governance-observability-layer]] Section 2.3 and [[analyses/scoring-quality-metrics]] for the full metric definitions.
+**What "human review queue" actually is:** There is no separate `human_review_queue` table. Human review is just a filtered view of the `leads` table where `pipeline_stage = 'human_review'`. S1 confirms the `lead` entity covers this — no additional table needed.
+
+**How these bands connect to quality metrics:** The split of leads across the three completeness bands is captured as the per-run lead completeness distribution metric (computed at the end of every Pipeline 1 run and written to `quality_snapshots`). A run where more than 50% of leads fall below 50% completeness triggers an alert — it signals that enrichment is failing to collect enough data on too many leads. See [[analyses/governance-observability-layer]] Section 2.3 and [[analyses/scoring-quality-metrics]] for the full metric definitions.
 
 ---
 
@@ -797,7 +824,7 @@ From any non-terminal stage:
 
 **Terminal states:** `delivered`, `human_review`, `failed`
 
-Exact field name and accepted string values: `[TBD from S1]`
+These pipeline_stage values are now locked. S1's entity catalog confirms the `lead` entity exists and carries this field. The accepted string values above are the ones S1 must implement — they are not flexible. Every orchestrator read and write depends on exactly these strings. If S1 ever changes a value (e.g. `normalised` → `normalized`), the orchestrator breaks silently at runtime.
 
 ### 8.2 The Write Order Rule
 
@@ -850,36 +877,70 @@ If the orchestrator crashes mid-run and restarts:
 
 The orchestrator writes a `pipeline_log` entry after **every tool call, at every stage, in both pipelines**. Individual tools never write lineage — only the orchestrator does.
 
-Each entry records:
+**Update from S1 (2026-04-22):** What this document previously called `pipeline_log` (one table) is actually three separate entities in S1's data model. Here is how they map:
+
+| Old name | S1 entity | What it records |
+|---|---|---|
+| pipeline_log (run header) | `pipeline_run` | One record per complete workflow execution — did the whole run succeed? Start time, end time, pipeline type, status |
+| pipeline_log (stage rows) | `task_execution` | One record per stage per run — which stage, which status, how long, retries, errors |
+| pipeline_log (provenance) | `lineage_record` | The data provenance chain — what went in, what came out, how data moved through enrichment/scoring/aggregation |
+
+**Why three tables, not one:** Each answers a different question. `pipeline_run` tells you whether the business process succeeded. `task_execution` tells you exactly which stage failed and why. `lineage_record` tells you how a specific output was produced from a specific input. Mixing them into one table makes all three questions harder to answer cleanly.
+
+**For the orchestrator, the write sequence per stage is:**
+
+```
+1. Tool returns its output
+2. Orchestrator writes to lineage_record (provenance of this stage's transformation)
+3. Orchestrator writes to task_execution (step-level status for this stage)
+4. Orchestrator updates pipeline_run (run-level status if this was the last stage)
+5. Orchestrator updates leads.pipeline_stage     ← always last
+```
+
+**Fields the orchestrator writes to each:**
+
+`task_execution` (per stage):
 
 | Field | What it captures |
 |---|---|
-| `run_id` | Which run this entry belongs to |
-| `lead_id` | Which lead (null for Pipeline 2 entries) |
-| `agent_id` | Which tool produced this entry |
+| `run_id` | Which pipeline run this stage belongs to |
+| `lead_id` | Which lead (null for Pipeline 2 stages) |
+| `agent_id` | Which tool or agent executed this stage |
 | `tenant_id` | Which tenant |
 | `pipeline` | `onboarding` or `lead_processing` |
-| `timestamp` | When this entry was written |
-| `input_snapshot` | Exact input sent to the tool |
-| `output_snapshot` | Exact output the tool returned |
-| `duration_ms` | How long the tool took |
-| `prompt_version` | Active prompt version — null for non-LLM tools |
-| `confidence` | Confidence at this step — null before the scoring stage |
+| `timestamp` | When the stage started |
+| `duration_ms` | How long the stage took |
+| `status` | success / failure |
+| `retry_count` | How many times this stage was retried |
 | `error` | Error message on failure, null on success |
 
-Full schema: `[TBD from S1 — pipeline_log schema ticket]`
+`lineage_record` (per stage, data provenance):
 
-Concurrent writes across parallel leads are safe — each entry is unique on `(run_id, lead_id, stage)`.
+| Field | What it captures |
+|---|---|
+| `run_id` | Which run |
+| `lead_id` | Which lead |
+| `agent_id` | Which tool produced this entry |
+| `tenant_id` | Which tenant |
+| `input_snapshot` | Exact input sent to the tool |
+| `output_snapshot` | Exact output the tool returned |
+| `prompt_version` | Active prompt version — null for non-LLM tools |
+| `lead_completeness` | Lead completeness score — null before the scoring stage |
+
+Note: `lead_completeness` replaces what was previously called `confidence` in this field. See [[concepts/confidence-first-class]] for the full correction.
+
+Concurrent writes across parallel leads are safe — each `task_execution` entry is unique on `(run_id, lead_id, stage)`.
 
 **The lineage log is the primary data source for all scoring quality metrics.** The fields written here — especially `confidence`, `dimension_scores`, `prompt_version`, `signal_version`, and `fired_signals` — are exactly what the quality metric jobs in [[analyses/scoring-quality-metrics]] compute against. The orchestrator writing complete, accurate lineage after every stage is the prerequisite for every metric in that document. A missing lineage entry means a missing data point in the quality snapshot; a corrupt entry means a corrupt metric. The lineage write is not optional bookkeeping — it is the foundation of the measurement system.
 
-| Lineage field | Quality metrics that depend on it |
-|---|---|
-| `confidence` | Per-run confidence distribution; C1, C2 (cross-run stability checks use confidence to filter) |
-| `dimension_scores` | AP1, AP2 (bucket outcome rates require knowing which dimensions drove the score) |
-| `prompt_version` | Attribution job (Step 1 of feedback loop) — identifies which prompt version is in wrong-bucket patterns |
-| `fired_signals` | AP3 (completeness qualifier), C5 (signal contribution consistency spot-check) |
-| `pipeline_stage` | Score Coverage Rate — denominator is leads that entered; numerator is leads that reached `scored` stage |
+| Lineage field | Where it lives | Quality metrics that depend on it |
+|---|---|---|
+| `lead_completeness` | `lineage_record` | Per-run completeness distribution; C1, C2 (cross-run stability checks filter by completeness) |
+| `sub_scores` | `lineage_record` output_snapshot | AP1, AP2 (bucket outcome rates need per-dimension breakdown) |
+| `prompt_version` | `lineage_record` | Attribution job (Step 1 of feedback loop) — identifies which prompt version appears in wrong-bucket patterns |
+| `fired_signals` | `lineage_record` output_snapshot | AP3 (completeness qualifier), C5 (signal contribution consistency spot-check) |
+| `pipeline_stage` | `leads` table | Score Coverage Rate — denominator is leads that entered; numerator is leads that reached `scored` stage |
+| `status` + `retry_count` | `task_execution` | Pipeline failure rate, per-stage bottleneck identification |
 
 **Build lineage before adding the second LLM agent.** Retrofitting an audit trail across multiple running agents is extremely costly and error-prone.
 
@@ -889,47 +950,53 @@ Concurrent writes across parallel leads are safe — each entry is unique on `(r
 
 The orchestrator sits between the data layer (S1) and the intelligence layer (S2). It cannot be fully built without interface contracts from both.
 
+**Status updated 2026-04-22** — S1 has delivered the entity catalog and S2 has delivered the intelligence layer design. Most blockers are resolved.
+
 ### Hard Blockers — orchestrator code cannot be written without these
 
-| What is needed | Who delivers | Why the orchestrator needs it |
+| What is needed | Who delivers | Status |
 |---|---|---|
-| `leads.pipeline_stage` — exact field name and all accepted string values | S1 | Orchestrator reads and writes this at every stage |
-| `pipeline_log` — all field names and types | S1 | Orchestrator writes lineage after every tool call |
-| Scoring Agent output JSON schema — especially the `confidence` field name and format | S2 | Orchestrator validates output, routes by confidence, logs the score |
+| `leads.pipeline_stage` — exact field name and all accepted string values | S1 | **RESOLVED** — values locked by this document: captured → fetched → enriched → normalised → scored → delivered / human_review / failed. S1 implements exactly these strings. |
+| Data store for pipeline execution and lineage | S1 | **RESOLVED** — three entities confirmed: `pipeline_run` (run-level), `task_execution` (step-level), `lineage_record` (provenance). Orchestrator writes to all three after every stage. |
+| Scoring Agent output JSON schema | S2 | **RESOLVED** — schema locked. Key fields: `score` (int), `bucket` (lowercase string), `reasoning` (string), `lead_completeness` (float 0.0–1.0), `sub_scores` (object), `recommended_action` (string), `needs_review` (bool), `schema_version`, `prompt_version`, `model`. |
+| Signal `detection_rule` format and evaluation engine | S2 | `[TBD]` |
 
-### Soft Blockers — can be stubbed for now, but needed before final build
+### Soft Blockers — resolved
 
-| What is needed | Who delivers |
-|---|---|
-| `tenant_config` mandatory field list | S1 |
-| `signal_definitions` table schema | S1 |
-| `human_review_queue` — confirmed as a table? what is the schema? | S1 |
-| Persona object structure (Onboarding Agent output) | S2 |
-| ICP object structure (ICP Agent output) | S2 |
-| Signal Agent output schema | S2 |
-| Signal `detection_rule` format and evaluation engine | S2 |
+| What is needed | Who delivers | Status |
+|---|---|---|
+| `tenant_config` mandatory field list | S1 | **RESOLVED** — mandatory fields are tenant_id, business_type, and the business_profile fields that feed the PersonaObject (icp, scoring_weights, banding, custom_rules, tone). |
+| `signal` entity schema | S1 | **RESOLVED** — confirmed: signal_id, dimension, name, description, detection_rule, weight_within_dim, applicable_to. `signal_evaluation` is the companion entity storing per-lead answers. |
+| `human_review_queue` — is it a separate table? | S1 | **RESOLVED — no separate table.** Human review leads are a filtered view of the `leads` table where `pipeline_stage = 'human_review'`. The `needs_review` flag in the ScoringOutput is what routes a lead there. |
+| Persona object (Onboarding Agent output) | S2 | **RESOLVED** — PersonaObject fields: tenant_id, business_type (B2B/B2C), icp (IcpDefinition), scoring_weights {fit, intent, engagement, recency}, banding {hot_min, warm_min, cold_max}, custom_rules (list), tone, version. Cached by Persona Engine with 15-min TTL. |
+| ICP object (ICP Agent output) | S2 | **RESOLVED** — ICP output is captured as `icp: IcpDefinition` inside the PersonaObject, and stored separately as the `ideal_customer_profile` entity by S1. Also versioned in `ideal_customer_profile_version`. |
+| Signal Agent output schema | S1 + S2 | **RESOLVED** — Signal Agent outputs `signal` records (one per scoring question). Stored by S1 in the `signal` entity. |
 
 ---
 
 ## 10. Open Decisions
 
-| Decision | Owner |
-|---|---|
-| `leads.pipeline_stage` exact accepted values | S1 |
-| `pipeline_log` schema | S1 |
-| `signal_definitions` table schema | S1 |
-| `human_review_queue` existence and schema | S1 |
-| Scoring Agent output schema (incl. `confidence` field) | S2 |
-| Signal `detection_rule` format + evaluation engine | S2 |
-| Onboarding / ICP / Signal Agent output schemas | S2 |
-| Scoring Agent concurrency cap | Team (recommend: 5) |
-| Timeout threshold for concurrency guard | Team (recommend: 15–30 min) |
-| Capability registry storage format | Team |
-| Tool invocation envelope — confirm or revise the proposed shape | S1 + S2 |
-| Disqualification rules per tenant | Per tenant |
-| Bucket threshold calibration (after Month 1 data) | Team |
-| Pipeline 2 check-in cadence | Team (suggest: 2 weeks or monthly) |
-| Alert delivery channel (chat / email / both) | Team |
+Updated 2026-04-22 — items resolved by S1 entity catalog and S2 intelligence layer design are marked.
+
+| Decision | Owner | Status |
+|---|---|---|
+| `leads.pipeline_stage` exact accepted values | S1 | **RESOLVED** — locked by this document |
+| Data store for lineage and execution tracking | S1 | **RESOLVED** — three entities: pipeline_run, task_execution, lineage_record |
+| `signal` and `signal_evaluation` entity schemas | S1 | **RESOLVED** — confirmed in S1 entity catalog |
+| `human_review_queue` existence and schema | S1 | **RESOLVED** — no separate table; filtered view of leads |
+| Scoring Agent output schema (incl. completeness field) | S2 | **RESOLVED** — locked by S2 design spec |
+| Onboarding / ICP / Signal Agent output schemas | S2 | **RESOLVED** — PersonaObject, IcpDefinition, and signal entity all defined |
+| Signal `detection_rule` format + evaluation engine | S2 | `[TBD]` |
+| Sub_scores field list (4 fields vs 5 dimensions) | S2 | **SOFT OPEN** — S2 should clarify whether behavioural and context are separate sub-score fields or collapsed |
+| Scoring Agent concurrency cap | Team | Recommend 5; team decision needed |
+| Timeout threshold for concurrency guard | Team | Recommend 15–30 min; team decision needed |
+| Capability registry storage format | Team | YAML / JSON / DB table — team decision |
+| Tool invocation envelope — confirm the proposed shape | S1 + S2 | Still needs review from both sides |
+| Disqualification rules per tenant | Per tenant | Defined at tenant onboarding |
+| Bucket threshold calibration (after Month 1 data) | Team | Starting points locked (80/55/0); recalibrate after Month 1 using AP1/AP2 |
+| Pipeline 2 check-in cadence | Team | Suggest 2 weeks or monthly |
+| Alert delivery channel (chat / email / both) | Team | TBD |
+| Lead completeness threshold for needs_review | Team | S2 suggests 0.6 or 0.75 as starting options; team decision |
 
 ---
 
@@ -952,3 +1019,11 @@ The orchestrator sits between the data layer (S1) and the intelligence layer (S2
 | Score decay, SLA tracker, and feedback jobs run outside the orchestrator | Team decision |
 | Governance layer failure must never halt Pipeline 1 or Pipeline 2 | Team decision |
 | System proposes pipeline re-runs — team lead always approves | Locked principle |
+| pipeline_stage accepted string values locked (see Section 8.1) | S1 entity catalog 2026-04-22 |
+| Data store is three entities: pipeline_run, task_execution, lineage_record | S1 entity catalog 2026-04-22 |
+| Scoring Agent output schema locked — `lead_completeness` (not `confidence`) | S2 intelligence layer design 2026-04-22 |
+| No separate human_review_queue table — filtered view of leads | S1 entity catalog 2026-04-22 |
+| PersonaObject structure locked | S2 intelligence layer design 2026-04-22 |
+| Signal + signal_evaluation are formal separate entities | S1 entity catalog 2026-04-22 |
+| Three prompt variants: new, returning, rescore | S2 intelligence layer design 2026-04-22 |
+| Intelligence layer never writes to data layer directly — all writes through orchestration | S2 intelligence layer design 2026-04-22 |

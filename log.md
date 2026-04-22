@@ -4,6 +4,59 @@
 
 ---
 
+## [2026-04-22] schema-update | Closing stale analyses — confidence-scoring-brainstorm and orchestration-layer-dependencies
+
+- Files updated: wiki/analyses/confidence-scoring-brainstorm.md, wiki/analyses/orchestration-layer-dependencies.md
+- confidence-scoring-brainstorm: status changed IN PROGRESS → RESOLVED. Resolution section added at top. Final answer: no confidence score, only `lead_completeness` (float 0.0–1.0). Brainstorm history preserved. One open item remains: threshold value for needs_review.
+- orchestration-layer-dependencies: rewritten with resolution status per blocker. All S1/S2 items resolved except `signal.detection_rule` format. Old terminology (Agent E, Phase 00–06, pipeline_log, `confidence` field) mapped to current names. Confirmed as superseded by orchestration-layer-spec.
+
+---
+
+## [2026-04-22] schema-update | Completing orchestration-layer-spec and governance-observability-layer with S1 + S2 deliverables
+
+- Files updated: wiki/analyses/orchestration-layer-spec.md, wiki/analyses/governance-observability-layer.md
+- Based on: [[sources/2026-intelligence-layer-design]] (S2) + [[sources/2026-core-business-entities]] (S1)
+
+### orchestration-layer-spec.md — what was completed
+
+1. **Scoring Agent output schema** — locked by S2. Replaced placeholder JSON with the actual ScoringOutput fields: `score` (int), `bucket` (lowercase), `reasoning` (one-line string), `lead_completeness` (float 0.0–1.0), `sub_scores` (object), `recommended_action`, `needs_review` (bool), `schema_version`, `prompt_version`, `model`. Full field-by-field explanation added.
+2. **ICP Agent schema** — updated to show ICP feeds into PersonaObject.icp; stored as `ideal_customer_profile` entity by S1; versioned via `ideal_customer_profile_version`. TBD removed.
+3. **Signal entities** — updated to confirm `signal` and `signal_evaluation` are formal S1 entities. `detection_rule` format still the one remaining open item.
+4. **Lead completeness routing** — replaced "Confidence routing" with "Lead completeness routing". Explained what needs_review means, how the Output Schema Layer sets it, and what "human review queue" actually is (filtered view of leads, not a separate table).
+5. **pipeline_stage values** — locked. S1 implements exactly: captured → fetched → enriched → normalised → scored → delivered / human_review / failed.
+6. **pipeline_log → three-entity model** — replaced single-table description with pipeline_run + task_execution + lineage_record. Field tables added for each. `confidence` → `lead_completeness` in lineage fields.
+7. **Section 9 hard blockers** — all resolved except `detection_rule` format. Resolved: pipeline_stage values, data store entities, Scoring Agent schema, PersonaObject, ICP, signal entities, human_review_queue.
+8. **Section 10 open decisions** — marked resolved items, added lead completeness threshold and sub_scores field count as new open items.
+9. **Section 11 confirmed decisions** — added 8 new confirmed decisions from S1/S2.
+
+### governance-observability-layer.md — what was completed
+
+1. **"confidence distribution" monitoring metric** — updated to "lead completeness distribution" throughout. Clarified it measures enrichment completeness, not LLM certainty.
+2. **pipeline_log schema** — replaced single-table TBD with the three-entity model: pipeline_run, task_execution, lineage_record. Each entity explained in plain English with its specific question it answers.
+3. **Lineage section** — updated to name the three entities; explained how audit and lineage relate in the new model.
+4. **attributed_feedback table** — updated: `dimension_scores JSONB` → `sub_scores JSONB`; `explanation_reasons TEXT[]` → `reasoning TEXT`; `confidence INTEGER` → `lead_completeness NUMERIC(4,3)`. Field notes added explaining each change.
+5. **Pattern detection** — `confidence` band → `lead_completeness` band; example output updated.
+6. **Section 8 tables map** — expanded to include full S1 entity list referenced throughout the doc.
+7. **Section 9 open questions** — resolved items marked; `leads.assigned_to` remains the one unresolved S1 item; added lead completeness threshold as new TBD.
+8. **Section 10 confirmed decisions** — added 10 new confirmed decisions from S1/S2.
+
+### One remaining open item
+`signal.detection_rule` format — S2's design document explicitly lists this as an unresolved decision. Lead Enrichment stage code cannot be written until this is locked. Everything else is unblocked.
+
+---
+
+## [2026-04-22] ingest | Intelligence Layer Design + Core Business Entity Catalog
+
+- Files: raw/assets/intelligence_layer_design.docx + raw/assets/core_business_entity.docx
+- Wiki pages (sources): [[wiki/sources/2026-intelligence-layer-design]], [[wiki/sources/2026-core-business-entities]]
+- Concepts created: [[wiki/concepts/intelligence-layer]], [[wiki/concepts/signal-types]], [[wiki/concepts/data-entity-model]]
+- Concepts updated: [[wiki/concepts/persona-layer]] (added Persona Engine details, data model backing, versioning confirmation), [[wiki/concepts/confidence-first-class]] (major correction — see below)
+- Overview, index, and log updated
+- **Key correction applied:** The intelligence layer design doc uses the term "confidence" for an LLM output field. The user confirmed this is **not a confidence score** — it is a **lead completeness score**. The `needs_review` routing logic and the 3-band threshold gate are unchanged, but the input is lead data completeness rather than LLM self-assessed certainty. This correction propagates through: `confidence-first-class` concept (status updated, calculation section rewritten), `intelligence-layer` concept (ScoringOutput schema field renamed to `lead_completeness`), `overview.md` (correction noted in What's Changed), and both new source pages.
+- Notes: Documents are related — intelligence_layer_design.docx defines the layer that produces `lead_score`; core_business_entity.docx defines the entity that stores it. Cross-references wired throughout. Signal entity schema (detection_rule format) remains a hard blocker; noted in both the data entity concept page and the updated open questions list.
+
+---
+
 ## [2026-04-19] schema-update | Full Documentation Audit — Governance Structure, Orchestration KPI Integration, Diagrams
 
 - Files updated: wiki/analyses/governance-observability-layer.md, wiki/analyses/orchestration-layer-spec.md

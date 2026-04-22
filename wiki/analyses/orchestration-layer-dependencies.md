@@ -3,94 +3,184 @@ type: analysis
 question: "What information must be completed by the devs working on subtask 1 (data layer) and subtask 2 (intelligence layer) before I can define the orchestration layer (subtask 3)?"
 date: 2026-04-17
 tags: [orchestration, system-layer, dependencies, subtask-3]
-sources_consulted: [sources/2026-lead-intelligence-engine-reference]
+sources_consulted: [sources/2026-lead-intelligence-engine-reference, sources/2026-intelligence-layer-design, sources/2026-core-business-entities]
+status: SUPERSEDED — 2026-04-22. All blockers resolved except one. See [[analyses/orchestration-layer-spec]] for the complete, current specification.
 ---
 
-# Orchestration Layer — What I Need from Subtask 1 and Subtask 2
+# Orchestration Layer — Dependencies from S1 and S2
 
-**Question:** What information must be completed by the devs working on subtask 1 (data layer) and subtask 2 (intelligence layer) before I can define the orchestration layer (subtask 3)?  
-**Date:** 2026-04-17  
-**Context:** Story: Define System Layer. Subtask 3 = Orchestration Controller, Tool Invocation, State Tracking.
-
----
-
-## Answer / Finding
-
-The Orchestrator is a TOOL (deterministic workflow engine — see [[concepts/lead-pipeline-architecture]]) and the only surface the user ever interacts with. It sits between the data layer and the intelligence layer — it reads/writes state from the data layer and calls components from the intelligence layer in order. Because of this position, it cannot be designed without knowing what those two layers look like at their interfaces.
+**Question:** What information must be completed by the devs working on subtask 1 (data layer) and subtask 2 (intelligence layer) before the orchestration layer can be defined?  
+**Date:** 2026-04-17 | **Updated:** 2026-04-22
 
 ---
 
-## What I Need from Subtask 1 (Data Layer)
+## Status (2026-04-22)
+
+S1 delivered the data entity catalog (`core_business_entity.docx`). S2 delivered the intelligence layer design (`intelligence_layer_design.docx`). Almost everything is now resolved. This document is retained for historical context. For the current state of all decisions, read [[analyses/orchestration-layer-spec]].
+
+`signal.detection_rule` format is `[TBD]` — will be updated when ready.
+
+---
+
+## What Was Needed from S1 — Resolution Status
 
 **1. `leads` table schema — specifically the `pipeline_stage` field**
 
-The orchestrator drives the lead through 7 status transitions:
-`captured → fetched → gathered → normalised → prompt_ready → enriched → delivered`
+The orchestrator drives the lead through stage transitions and reads/writes `pipeline_stage` at every step.
 
-It reads and writes this status at every step. Without knowing the exact field name, accepted values, and how to query by lead ID, the state tracking logic cannot be written.
+**RESOLVED.** S1's entity catalog confirms the `lead` entity. The accepted `pipeline_stage` values are locked by this orchestration spec:
 
-**2. `pipeline_log` table schema**
+```
+captured → fetched → enriched → normalised → scored → delivered
+                                                     → human_review
+[any non-terminal] → failed
+```
 
-Every step the orchestrator runs must write a lineage entry (non-negotiable per [[concepts/lineage-log]]). Known fields from the reference doc: `run_id, lead_id, agent_id, input_snapshot, output_snapshot, duration_ms, error` — but all are `[TBD]`. The S1 dev must finalize this before the orchestrator can write lineage.
-
-**3. `tenant_config` table schema**
-
-The orchestrator loads tenant config at Phase 00 before anything else. It needs to know what fields come back so it can validate the config, halt on missing/malformed data (LOCKED rule), and pass the right things to downstream tools.
-
-**4. Where does scored output get written?**
-
-When Agent E finishes, the orchestrator writes the final scored lead back somewhere. Is that the `leads` table, a separate output table, or both? The S1 dev must decide this. Without it, the orchestrator's final write step cannot be defined.
+S1 must implement exactly these string values. Any change breaks the orchestrator at runtime.
 
 ---
 
-## What I Need from Subtask 2 (Intelligence Layer)
+**2. Data store for pipeline execution and lineage**
 
-**1. Agent E output schema — specifically the `confidence` field**
+Every step the orchestrator runs must write a lineage entry. A run-level record is also needed to track overall success.
 
-The orchestrator uses confidence to route every lead:
-- ≥80% → auto-bucket
-- 50–79% → flag for review
-- <50% → human review queue
+**RESOLVED.** What was previously described as a single `pipeline_log` is three formal S1 entities:
 
-This routing logic is the core of the orchestrator's decision-making in Phase 05/06. Without knowing the exact field name, format (integer 0–100? float 0–1?), and what else is in the output object, this cannot be written.
+- `pipeline_run` — one record per complete workflow execution; answers "did the whole run succeed?"
+- `task_execution` — one record per stage per run; answers "which stage failed and why?"
+- `lineage_record` — data provenance per stage; answers "what went in, what came out, which prompt was used?"
 
-**2. Persona object structure from the persona engine**
-
-The orchestrator loads the persona in Phase 00 and passes it to Agent D. It needs to know the exact structure of what the persona engine returns. The reference doc has a JSON skeleton (Section 15.2) but field values are all `[TBD]`. The S2 dev must lock the schema.
-
-**3. What Agent D hands off to Agent E**
-
-The orchestrator sequences Agent D → Agent E. It needs to know what Agent D produces (the assembled prompt payload) so it can correctly pass it. If the format changes, the orchestrator breaks.
-
-**4. Agent E failure modes**
-
-The reference doc notes that output validation logic is `[TBD]` (Section 10.4). When Agent E returns malformed JSON or fails, the orchestrator must decide: retry, halt, or flag. The S2 dev must define what failure looks like so the orchestrator can handle it.
+The orchestrator writes to all three after every stage call.
 
 ---
 
-## Hard Blockers vs. Soft Blockers
+**3. `tenant_config` mandatory field list**
 
-**Cannot proceed without these (hard blockers):**
-- `leads` table `pipeline_stage` field — exact values (from S1)
-- `pipeline_log` schema — exact fields (from S1)
-- Agent E output schema — especially `confidence` field name and format (from S2)
+The orchestrator loads tenant config before anything else and halts if required fields are missing.
 
-**Can stub with assumptions, but must flag them (soft blockers):**
-- `tenant_config` field list
-- Persona object structure
-- Agent D output format
-- Agent E failure modes
+**RESOLVED.** S1's entity catalog defines `tenant` and `business_profile` as formal entities. S2's PersonaObject defines what fields the intelligence layer needs from tenant config: `business_type`, `icp` definition, `scoring_weights`, `banding` rules, `custom_rules`, `tone`. The orchestrator's pre-flight check validates these fields are present before any pipeline stage runs.
 
 ---
 
-## Caveats & Gaps
+**4. Where scored output gets written**
 
-- All table schemas are explicitly `[TBD]` in the reference doc (Section 13.2) — one ticket per table is the planned approach
-- Agent E output JSON schema is `[TBD]` (Section 10.4) — this is the single most important unresolved item for the orchestrator
-- The `human_review_queue` table is also `[TBD]` existence — if confidence <50% routes there, the orchestrator needs to know how to write to it
+When the Scoring Agent finishes, the orchestrator writes the result somewhere.
 
-## Follow-up Questions
+**RESOLVED.** S1's entity catalog confirms `lead_score` as the formal entity for scoring output, and `score_model_version` as the entity tracking which scoring logic produced it. The orchestrator writes to both. The intelligence layer never writes directly — it returns a ScoringOutput object to the orchestrator, which then persists it.
 
-- Has the S1 dev started on the `leads` and `pipeline_log` table schemas yet?
-- Has the S2 dev locked the Agent E output JSON structure?
-- Is `human_review_queue` confirmed as a table or will it be handled differently?
+---
+
+**5. `human_review_queue` — is it a separate table?**
+
+Leads below the completeness threshold need somewhere to go.
+
+**RESOLVED. No separate table.** Human review leads are a filtered view of the `leads` table where `pipeline_stage = 'human_review'`. The `needs_review` flag in the ScoringOutput tells the orchestrator to set that stage value. No extra write needed.
+
+---
+
+## What Was Needed from S2 — Resolution Status
+
+**1. Scoring Agent output schema — specifically the completeness field**
+
+The orchestrator uses this to route every lead after scoring.
+
+**RESOLVED.** S2's intelligence layer design locks the full ScoringOutput schema. Key fields:
+
+```
+score              : int (0–100)
+bucket             : 'hot' | 'warm' | 'cold'  (lowercase)
+reasoning          : str  (one line)
+lead_completeness  : float (0.0–1.0)
+sub_scores         : { fit, intent, engagement, recency }
+recommended_action : str
+needs_review       : bool
+schema_version     : str
+prompt_version     : str
+model              : str
+```
+
+Note: the field previously described as `confidence` is `lead_completeness`. It is not LLM self-assessed certainty — it measures completeness of the enriched lead data. See [[concepts/confidence-first-class]].
+
+The orchestrator reads `needs_review` to decide routing:
+- `needs_review = false` → assign bucket, write to output, set `pipeline_stage = 'delivered'`
+- `needs_review = true` → assign bucket, write to output, AND set `pipeline_stage = 'human_review'`
+
+---
+
+**2. Persona object structure (Onboarding Agent output)**
+
+The orchestrator loads this at the start of every Pipeline 1 run and passes it into the scoring call.
+
+**RESOLVED.** S2 defines the PersonaObject:
+
+```
+tenant_id       : str
+business_type   : 'B2B' | 'B2C'
+icp             : IcpDefinition
+scoring_weights : { fit, intent, engagement, recency }
+banding         : { hot_min, warm_min, cold_max }
+custom_rules    : list
+tone            : str
+version         : int
+```
+
+Cached by the Persona Engine with a 15-minute TTL. Cache invalidated when tenant updates scoring rubric. Orchestrator never calls the Persona Engine directly — it passes `tenant_id` and `lead` to `score_lead()` and the intelligence layer handles the rest.
+
+---
+
+**3. What the Prompt Layer produces and how it's passed to the Scoring Agent**
+
+The orchestrator sequences the intelligence layer call. It needs to understand what happens internally.
+
+**RESOLVED.** The orchestrator does not manage this handoff — it's internal to the intelligence layer. The orchestrator calls a single function: `score_lead(tenant_id, lead, variant, ...)` and gets back a ScoringOutput. The Prompt Layer → Rating Agent → Output Schema Layer pipeline is entirely inside the intelligence layer. The orchestrator never touches it.
+
+---
+
+**4. Scoring Agent failure modes**
+
+When scoring fails, the orchestrator must know how to handle it.
+
+**RESOLVED.** S2 defines two typed return values — ScoringOutput (success or needs_review) and ScoringFailure. ScoringFailure carries a `reason` field: `'parse_error'`, `'schema_invalid'`, or `'low_confidence'` (now: low completeness). The intelligence layer never raises an exception — it always returns one of the two types. The orchestrator's retry policy applies to ScoringFailure results (retry once → if still fails → `pipeline_stage = 'human_review'` with `reason: scoring_failed`).
+
+---
+
+**5. Signal `detection_rule` format and evaluation engine**
+
+The Lead Enrichment stage runs detection rules against enriched data to extract signal values.
+
+`[TBD]`
+
+---
+
+## Signal Agent output
+
+**RESOLVED.** The Signal Agent produces `signal` records — one per scoring question, organized by dimension (fit / intent / engagement / behavioral / context). Stored in S1's `signal` entity. The companion `signal_evaluation` entity stores the per-lead answer for each signal question after Lead Enrichment runs. This is the data model backing the fill-in-the-blanks prompt mechanism.
+
+---
+
+## Old Terminology Map
+
+This document originally used terminology from before the two-pipeline design was finalised. Here is the mapping to current terms:
+
+| Old term | Current term |
+|---|---|
+| Agent E | Scoring Agent |
+| Agent D | Prompt Layer (internal to intelligence layer) |
+| Phase 00–06 | Pipeline 1 stages: Data Gather → Lead Enrichment → Normalise → Scoring Agent → Bucketize |
+| `pipeline_log` (single table) | Three entities: pipeline_run, task_execution, lineage_record |
+| `confidence` field | `lead_completeness` field (float 0.0–1.0) |
+| enrichment score | lead score (0–100, output of Scoring Agent) |
+
+---
+
+## Summary — What Remains Open
+
+| Item | Status |
+|---|---|
+| `signal.detection_rule` format + evaluation engine | `[TBD]` |
+| Lead completeness threshold for `needs_review` | Team decision — S2 suggests 0.6 or 0.75 |
+| `sub_scores` field count (4 listed vs 5 scoring dimensions) | S2 to clarify — soft blocker for orchestrator logging |
+| Scoring Agent concurrency cap | Team decision — recommend 5 |
+| Concurrency guard timeout threshold | Team decision — recommend 15–30 min |
+
+Everything else is unblocked and documented in [[analyses/orchestration-layer-spec]].
