@@ -110,6 +110,7 @@ The entity catalog is the contract between all three layers. Without named entit
 - [[concepts/persona-layer]] — `business_profile`, `ideal_customer_profile`, and their versioned counterparts back the persona layer
 - [[concepts/feedback-loop]] — `feedback_record` is the entity formalization of raw feedback input
 - [[concepts/lead-pipeline-architecture]] — `pipeline_run` and `task_execution` back pipeline execution tracking
+- [[analyses/delivery-integration-layer]] — Group C delivery entities (`dashboard_definition`, `notification_delivery`, `delivery_endpoint`, `report_definition`) are defined and used in the Delivery and Integration Layer; see that doc for full field schemas and how each entity is written to and read from
 
 ## Sources
 

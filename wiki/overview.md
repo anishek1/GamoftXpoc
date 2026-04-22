@@ -20,6 +20,8 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 
 **The measurement system is now fully documented and connected to the execution system.** The orchestrator writes lineage after every stage of every lead. Scheduled SQL jobs read that lineage to compute quality metrics at three cadences (per-run, weekly, monthly). Results flow into three Global KPIs (System Health, Business Health, Tenant Health Rate). Team lead and product owner reviews close the loop back to the orchestrator — recalibrating bucket thresholds, signal weights, or triggering Pipeline 2 re-runs. The full lifecycle is diagrammed in [[analyses/orchestration-layer-spec]] Section 5.1.
 
+**The Delivery and Integration Layer is now defined.** Scored leads are handed off from Bucketize to the delivery layer, which handles: chat delivery (ranked lead cards — the primary surface salespeople use), immediate HOT push notifications, CRM sync (Salesforce, HubSpot, etc.), role-scoped dashboards, scheduled reports, and external API/webhooks. Delivery failures never roll back Pipeline 1 — the score is persisted before delivery is attempted. Feedback signals (thumbs up/down, outcomes) collected in the delivery layer feed back into the Governance Layer's feedback loop. Full spec: [[analyses/delivery-integration-layer]].
+
 **What's locked:** The 5 design principles, the two-pipeline architecture, 4 LLM agents (Onboarding, ICP, Signal, Scoring), deterministic signal extraction, fill-in-the-blanks prompt mechanism, bucket thresholds (80/55/0 — starting points), 5 Add-ons, Postgres state store, serial build order, governance layer failure must not halt pipelines, system proposes / human approves on all config changes. The Intelligence Layer's four-component internal design (Persona Engine → Prompt Layer → Rating Agent → Output Schema Layer) and its `score_lead()` interface are now specified. The full data entity catalog (32 entities across 3 groups) is now documented. The five scoring dimensions (Fit 25%, Intent 25%, Engagement 20%, Behaviour 20%, Context 10%) and their default weights are locked.
 
 **What's changed from original source doc:** Pipeline count (1 → 2), LLM agent count (1 → 4), bucket thresholds (75/45 → 80/55), pipeline stage names updated, Governance Layer added as explicit cross-cutting layer, quality metrics fully wired to orchestration layer. **Correction (2026-04-22):** The "confidence" field in the intelligence layer design is a **lead completeness score**, not LLM self-assessed confidence. LLMs are poorly calibrated; the field measures completeness of enriched lead data instead. Routing logic and `needs_review` flag are unchanged.
@@ -43,6 +45,7 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 - **[[concepts/capability-registry]]** — drives Pipeline 1 tool sequence; zero orchestrator changes per new use case
 - **[[concepts/feedback-loop]]** — 3-step enforcement (attribution → pattern detection → team lead recommendation); backed by `feedback_record` entity
 - **[[concepts/adaptive-signal-lifecycle]]** — deferred to Sprint 2-3; needs real production data
+- **[[analyses/delivery-integration-layer]]** — final mile after Bucketize; chat (primary surface), notifications, CRM sync, dashboards, reports, external API/webhooks; 4 S1 delivery entities; RBAC-scoped; delivery failures never roll back Pipeline 1
 
 ## Key Analyses — Documentation State
 
@@ -51,8 +54,9 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 | [[analyses/orchestration-layer-spec]] | COMPLETE | Two-pipeline architecture, controller, tool invocation, state tracking; updated system architecture diagram with KPI layer; Section 5.1 KPI orchestration workflow |
 | [[analyses/governance-observability-layer]] | COMPLETE | All 6 domains with correct section ordering and numbering; full how/why reasoning throughout; 3-step feedback loop; 3-layer security |
 | [[analyses/scoring-quality-metrics]] | COMPLETE | Score Coverage + Accuracy Proxy (AP1–AP3) + Consistency (C1–C5) + Action Relevance (AR1–AR5) + 3 Global KPIs; now cross-referenced from both other docs |
-| [[analyses/orchestration-layer-dependencies]] | COMPLETE | 3 hard blockers (S1: pipeline_stage values + pipeline_log schema; S2: Scoring Agent output schema) |
-| [[analyses/confidence-scoring-brainstorm]] | IN PROGRESS | Now tracking lead completeness score (not LLM confidence); formula and threshold still unresolved |
+| [[analyses/orchestration-layer-dependencies]] | SUPERSEDED 2026-04-22 | All S1/S2 blockers resolved except signal.detection_rule format; see orchestration-layer-spec for current state |
+| [[analyses/confidence-scoring-brainstorm]] | RESOLVED 2026-04-22 | No confidence score — field is lead_completeness (float 0.0–1.0); threshold TBD after Month 1 |
+| [[analyses/delivery-integration-layer]] | COMPLETE 2026-04-22 | Chat interface, notifications, dashboards, CRM sync, external API/webhooks, report delivery; 4 S1 delivery entities; RBAC-scoped access |
 | [[sources/2026-intelligence-layer-design]] | INGESTED 2026-04-22 | Intelligence Layer design spec: 4-component pipeline, score_lead() interface, 5 scoring dimensions, open decisions |
 | [[sources/2026-core-business-entities]] | INGESTED 2026-04-22 | Full data entity catalog: 32 entities across lead lifecycle, governance, and operational observability |
 

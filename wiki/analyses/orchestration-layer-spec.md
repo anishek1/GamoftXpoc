@@ -50,12 +50,21 @@ Every pipeline starts from the orchestrator. Every tool is called by the orchest
   │          ↓              │  prompt │          ↓                   │
   │  Prompt Template built  │         │   Scoring Agent (LLM)        │
   └─────────────────────────┘         │          ↓                   │
-          │ lineage                   │   Bucketize → salesperson    │
+          │ lineage                   │   Bucketize                  │
           │ writes                    └──────────────┬───────────────┘
-          │ (both pipelines)               lineage   │
+          │ (both pipelines)               lineage   │ scored leads
           └────────────────────────────────writes ───┘
                                     │
               ┌─────────────────────▼────────────────────────────────┐
+              │       DELIVERY AND INTEGRATION LAYER                  │
+              │                                                       │
+              │  Chat (lead cards) · Notifications · Dashboards      │
+              │  CRM Sync · External API + Webhooks · Reports        │
+              │  → [[analyses/delivery-integration-layer]]           │
+              └──────────────────────────────────────────────────────┘
+                         │ feedback signals (thumbs up/down, outcomes)
+                         ▼
+              ┌─────────────────────────────────────────────────────┐
               │                GOVERNANCE LAYER                       │
               │   monitoring · auditability · feedback loops          │
               │   lineage (pipeline_log) · security                   │
@@ -313,10 +322,16 @@ For interactive triggers: the orchestrator classifies the intent before doing an
                     │            BUCKETIZE                │
                     │   HOT  /  WARM  /  COLD             │
                     │   disqualification gate             │
-                    │   confidence routing                │
+                    │   completeness routing              │
                     └─────────────────┬───────────────────┘
                                       │
-                    Salesperson sees ranked lead cards in chat
+                    ┌─────────────────▼───────────────────┐
+                    │  DELIVERY AND INTEGRATION LAYER      │
+                    │  chat cards · notifications · CRM    │
+                    │  dashboards · reports · webhooks     │
+                    │  [[analyses/delivery-integration-    │
+                    │    layer]]                           │
+                    └─────────────────────────────────────┘
 ```
 
 Each lead is processed in parallel (up to a concurrency cap of `[TBD — recommend 5]` simultaneous Scoring Agent calls).
@@ -714,7 +729,7 @@ Does a prompt_template exist for this tenant and use case?
 7.  Wait for all leads to reach a terminal state
 8.  For each lead: run disqualification gate → apply confidence routing → assign bucket → assign SLA
 9.  Write run-level observability log
-10. Format and deliver ranked lead cards to salesperson in chat
+10. Hand off to Delivery and Integration Layer — ranked lead cards delivered in chat (HOT leads pushed immediately), HOT/WARM leads pushed to CRM, notifications dispatched. See [[analyses/delivery-integration-layer]].
 ```
 
 ---

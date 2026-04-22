@@ -21,11 +21,15 @@ status: COMPLETE — updated 2026-04-22 with S1 (data entity model) and S2 (inte
 The Governance Layer is a **cross-cutting layer** — it does not sit inside Pipeline 1 or Pipeline 2. It receives events from both pipelines continuously and runs its own independent jobs on schedule.
 
 ```
-Pipeline 2 (Onboarding) ──┐
-                           ├──► GOVERNANCE LAYER
-Pipeline 1 (Event/Lead) ──┘
-       events, lineage,
-       feedback, metrics
+Pipeline 2 (Onboarding) ──────────────────────────────────────────┐
+                                                                   │
+Pipeline 1 (Event/Lead) ──► DELIVERY AND INTEGRATION LAYER        ├──► GOVERNANCE LAYER
+                               (chat · CRM · notifications         │        events, lineage,
+                                dashboards · reports · webhooks)   │        feedback, metrics
+                               [[analyses/delivery-integration-    │
+                                layer]]                            │
+                                         │ feedback signals        │
+                                         └────────────────────────►┘
 ```
 
 **Why it is separate from both pipelines:** Governance concerns are orthogonal to execution concerns. Pipeline 1 must be fast and reliable — every millisecond of governance work added to the critical path is latency added to lead delivery. By running governance as a separate layer (event-driven and scheduled), the pipelines stay deterministic and fast, while governance gets to be thorough and independent. A governance failure never halts a pipeline run.
@@ -107,7 +111,7 @@ Alerts trigger notifications to team lead. All thresholds are `[TBD — team inp
 | All sources fail | Any run where all channels return failure | Critical | Zero leads in = zero leads out; the entire pipeline is blocked |
 | Pipeline 2 failure | Any LLM agent in onboarding fails | High | A failed onboarding blocks Pipeline 1 from running for that tenant |
 
-Alert delivery mechanism: `[TBD — chat message, email, or both]`
+Alert delivery mechanism: `[TBD — chat message, email, or both]` — alert delivery is handled by the Delivery and Integration Layer. See [[analyses/delivery-integration-layer]] Section 4 for notification types, the `notification_delivery` entity, and channel decisions.
 
 ---
 
@@ -372,7 +376,7 @@ Prompt version 1.3 → 5 wrong-bucket leads (Gamoft tenant only)
 
 **Why this rule is locked:** The system has no ground truth. It identifies patterns in negative feedback, but it cannot determine whether those patterns reflect genuine model failure or a temporary market shift that will self-correct. A human who understands the tenant's business context must make that call. Automating it risks making changes based on statistical noise, compounding errors rather than correcting them.
 
-**Notification delivery:** `[TBD — in-chat message, email, or both]`
+**Notification delivery:** `[TBD — in-chat message, email, or both]` — delivered through the Delivery and Integration Layer using the same notification mechanism as HOT lead alerts. See [[analyses/delivery-integration-layer]] Section 4.
 
 ### 5.6 How Feedback Connects to Existing Quality Metrics
 

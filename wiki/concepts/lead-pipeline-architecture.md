@@ -31,8 +31,14 @@ Signal Agent (LLM)                    Lead Enrichment
        │                              Normalise
        │ signal definitions           Scoring Agent (LLM)
        └─────────────────────────────►Bucketize
-                                           │
+                                           │ scored leads
                     ┌──────────────────────┘
+                    ▼
+  DELIVERY AND INTEGRATION LAYER
+  chat · notifications · CRM sync
+  dashboards · reports · webhooks
+  [[analyses/delivery-integration-layer]]
+                    │ feedback signals
                     ▼
           GOVERNANCE LAYER
  monitoring · lineage · feedback
@@ -60,7 +66,7 @@ The Signal Agent decides how many signals are needed per dimension (Intent: 5+, 
 | Data Gather | TOOL | Raw leads from all channels |
 | Lead Enrichment | TOOL (deterministic) | Enriched lead + extracted signal values |
 | Normalise | TOOL | Clean unified lead schema |
-| Scoring Agent | LLM AGENT | Score, bucket, explanation, confidence |
+| Scoring Agent | LLM AGENT | Score, bucket, reasoning, lead_completeness, needs_review |
 | Bucketize | TOOL | HOT / WARM / COLD + SLA |
 
 ## Lead Status Transitions (Pipeline 1)
@@ -72,7 +78,7 @@ captured
       → normalised
         → scored
           → delivered
-          → human_review   (confidence < 50% or scoring_failed)
+          → human_review   (lead_completeness below threshold, or scoring_failed)
 
 [any non-terminal] → failed
 ```
@@ -111,7 +117,7 @@ The pipeline is both the execution engine and the measurement subject. Every sta
 | What the pipeline produces | Quality metric it feeds |
 |---|---|
 | Lead reaches `scored` state | Score Coverage Rate (numerator) |
-| Confidence value at scoring | Per-run confidence distribution; C1, C2 |
+| lead_completeness value at scoring | Per-run completeness distribution; C1, C2 |
 | Dimension scores at scoring | AP1, AP2 (bucket outcome rates need dimension breakdown) |
 | Bucket assignment | AP1, AP2, AR1, AR2, AR3, AR4, AR5 |
 | Prompt version at scoring | Attribution job (feedback loop Step 1) — wrong-bucket pattern detection |
@@ -167,6 +173,7 @@ The two-pipeline separation means:
 - [[concepts/action-sla]] — assigned at Bucketize stage
 - [[concepts/capability-registry]] — drives Pipeline 1 tool sequence
 - [[concepts/feedback-loop]] — feeds Governance Layer
+- [[analyses/delivery-integration-layer]] — final mile after Bucketize; delivers scored leads to chat, CRM, dashboards, and external systems; feedback signals from delivery feed the governance feedback loop
 
 ## Sources
 

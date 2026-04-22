@@ -4,6 +4,40 @@
 
 ---
 
+## [2026-04-22] schema-update | Cross-document propagation — Delivery and Integration Layer
+
+- Trigger: delivery-integration-layer.md created; all other docs updated to reference it and reflect its position in the system architecture
+
+### Files updated
+
+**wiki/analyses/orchestration-layer-spec.md**
+- Section 2 (main architecture diagram): "Bucketize → salesperson" → "Bucketize"; added DELIVERY AND INTEGRATION LAYER box between Pipeline 1 output and GOVERNANCE LAYER; shows feedback signal flow back to governance
+- Section 4.2 (Pipeline 1 stage flow): Bucketize bottom replaced with DELIVERY AND INTEGRATION LAYER box instead of "Salesperson sees ranked lead cards in chat"
+- Section 4.2 (Bucketize box): "confidence routing" corrected to "completeness routing"
+- Section 6.3 step 10: updated to reference Delivery Layer handoff and [[analyses/delivery-integration-layer]]
+
+**wiki/analyses/governance-observability-layer.md**
+- Section 1 (position diagram): redesigned to show Pipeline 1 output first going to Delivery Layer, then feedback signals flowing from Delivery Layer to Governance Layer
+- Section 2.3 (alert delivery): added reference to [[analyses/delivery-integration-layer]] Section 4 (notification_delivery entity, channel decisions)
+- Section 5.5 (team lead notification delivery): added reference to [[analyses/delivery-integration-layer]] Section 4
+
+**wiki/overview.md**
+- Current Thesis: added paragraph on Delivery Layer (what it covers, delivery failures never roll back Pipeline 1, full spec reference)
+- Major Themes: added delivery-integration-layer analysis entry
+- Key Analyses table: added delivery-integration-layer.md as COMPLETE 2026-04-22; fixed confidence-scoring-brainstorm from "IN PROGRESS" → "RESOLVED 2026-04-22"; corrected orchestration-layer-dependencies to SUPERSEDED
+
+**wiki/concepts/data-entity-model.md**
+- Related Concepts: added [[analyses/delivery-integration-layer]] entry for Group C delivery entities
+
+**wiki/concepts/lead-pipeline-architecture.md**
+- Pipeline diagram: added DELIVERY AND INTEGRATION LAYER between Bucketize and GOVERNANCE LAYER with feedback signal flow
+- Pipeline 1 stage table: Scoring Agent output corrected (confidence → lead_completeness, needs_review)
+- Lead Status Transitions: "confidence < 50%" → "lead_completeness below threshold"
+- Quality metrics table: "Confidence value" → "lead_completeness value"
+- Related Concepts: added [[analyses/delivery-integration-layer]] entry
+
+---
+
 ## [2026-04-22] analysis | Delivery and Integration Layer
 
 - File created: [[wiki/analyses/delivery-integration-layer.md]]
