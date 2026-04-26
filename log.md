@@ -4,6 +4,97 @@
 
 ---
 
+## [2026-04-26] analysis | Agent Specifications — Persona Agent, Rating Agent, Future Optional Agents
+
+- Files created: [[wiki/analyses/persona-agent-spec]], [[wiki/analyses/rating-agent-spec]], [[wiki/analyses/future-optional-agents]]
+- Sources consulted: [[concepts/agent-vs-tool-classification]], [[concepts/intelligence-layer]], [[concepts/persona-layer]], [[concepts/signal-types]], [[analyses/orchestration-layer-spec]], [[analyses/execution-type-classification]], [[analyses/delivery-integration-layer]], [[analyses/scoring-quality-metrics]], [[concepts/confidence-first-class]]
+
+### Persona Agent (persona-agent-spec.md)
+- Defined as the Pipeline 2 configuration agent — 3 sequential LLM sub-agents (Business Persona → ICP → Signal Definitions)
+- Inputs: tenant business description (from P2-1 intake), optional re-run context (feedback pattern, check-in change description), team_lead_approval required for re-runs
+- Outputs: PersonaObject (scoring_weights, banding, custom_rules, tone), IcpDefinition (target_segment, priority_signals, disqualifying_signals, buying_triggers), signal[] (all 5 dimensions), prompt template (orchestrator generates post-Step-3, AUTOMATION)
+- Named distinction from Persona Engine (TOOL that loads/caches at scoring time) explicitly documented
+- Invocation: new tenant onboarding OR feedback-driven re-run OR check-in-driven re-run; never per-lead; never automatic
+- Step 3 output constrained: weights_within_dim must sum to 1.0 per dimension
+
+### Rating Agent (rating-agent-spec.md)
+- Defined as the full score_lead() call — encompasses 4 internal components (Persona Engine, Prompt Layer, Rating Agent component, Output Schema Layer)
+- Inputs: EnrichedLead, tenant_id, variant (new/returning/rescore), signal_values dict, prompt_template_version
+- Score output: score (int 0-100), bucket (enforced by banding), sub_scores (per dimension)
+- Reasoning output: reasoning (one-line), recommended_action (simple string — deliberately limited at MVP)
+- Completeness output: lead_completeness (float 0.0-1.0) + needs_review (bool) — **NOT LLM confidence** (2026-04-22 correction maintained)
+- Per-tenant concurrency cap: recommend 2 per tenant (not global) — prevents noisy neighbor
+- Timeouts: 30s LLM call, 60s full score_lead(), 90s orchestrator budget
+- Soft blocker noted: sub_scores has 4 fields in S2 spec vs 5 scoring dimensions — S2 to clarify
+
+### Future Optional Agents (future-optional-agents.md)
+- **Recommendation Agent:** fills gap between "what to do" and "how to approach this specific lead"; outputs personalized outreach draft, talking points, channel recommendation, timing window; unlock conditions: 3+ months data, AP1/AR2/AR3 stable, CRM outcomes connected; introduce as A/B opt-in for one tenant first
+- **Workflow Agent:** adds judgment to lifecycle decisions (vs deterministic SLA/decay rules); outputs decision (rescore/escalate/hold_decay/archive), rationale, approval proposal; unlock conditions: 3+ months stability, AR1 baseline, tenant workflow patterns documented; introduce with narrow scope (re-score triggers only) first
+- Both agents defined as enhancements, not corrections — MVP delivers full core value without them
+- Defined what should NOT become an agent (deduplication, signal extraction, bucket enforcement, quality metrics)
+- Principles for future agent expansion: data prerequisite, determinism, cost proportionality, oversight, minimal set tests
+
+---
+
+## [2026-04-26] analysis | Execution Type Classification — Automation / Agent / Hybrid
+
+- Wiki page: [[wiki/analyses/execution-type-classification]]
+- Question: Which steps in the Lead Intelligence Engine workflow are automation, agent-driven, or hybrid?
+- Sources consulted: [[concepts/agent-vs-tool-classification]], [[analyses/orchestration-layer-spec]], [[concepts/intelligence-layer]], [[concepts/lead-pipeline-architecture]], [[analyses/governance-observability-layer]]
+
+### Classification summary
+
+- **AGENT (3 steps):** Onboarding Agent (P2-2), ICP Agent (P2-3), Signal Agent (P2-4) — all in Pipeline 2, all one-time per tenant
+- **HYBRID (3 steps):** Tenant Info Intake (P2-1) — form scaffold + LLM strengthening of inputs; Scoring (P1-5) — Rating Agent LLM call + Output Schema Layer banding enforcement; Proactive Check-In (G-10) — conditional on classifier type (TBD)
+- **AUTOMATION:** All remaining steps — Data Gather, Lead Enrichment (both phases), Normalise, Prompt Fill, Disqualification Gate, Bucketize, routing, delivery, all lineage/governance/background jobs
+
+### Key architectural findings
+
+- The hybrid boundary at Scoring (P1-5) is defined by the Output Schema Layer enforcing banding rules that can override the LLM's bucket — within the same atomic `score_lead()` call. This is not a separate validation step.
+- Signal extraction (P1-2b) is AUTOMATION despite using signal definitions created by an LLM Agent (P2-4). Intelligence is front-loaded into signal design; execution is deterministic per-lead.
+- The 1-LLM-call-per-lead guarantee holds: the only per-lead LLM cost is in the HYBRID Scoring step (Rating Agent component).
+- Three open questions can shift G-9, G-10 classifications: check-in classifier type, recommendation wording approach, detection_rule format.
+
+### Design implications documented
+
+- Test strategy per execution type (unit tests for AUTOMATION, eval suites for AGENT, both for HYBRID)
+- Debugging approach: check signal extraction values first, then LLM judgment
+- Cost attribution: LLM costs incurred only in AGENT and HYBRID steps
+- Observability signal scope per execution type
+
+---
+
+## [2026-04-26] schema-update | Flag deleted analyses — success-metrics-framework and success-metrics-brief
+
+- Files affected: index.md
+- success-metrics-framework.md: marked DELETED in index; file was removed from filesystem; log entries from 2026-04-14 and 2026-04-16/17 preserved; content superseded by scoring-quality-metrics combined doc
+- success-metrics-brief.md: marked DELETED in index; file was removed from filesystem; log entries from 2026-04-17 preserved
+
+---
+
+## [2026-04-24] analysis | Service Scaling Strategy — Three MVP Services
+
+- Question: What are the best ways to scale the Ingestion, Orchestration+LLM, and Reporting services?
+- Wiki page: [[wiki/analyses/service-scaling-strategy]]
+- Reference: Tod Golding, *Building Multi-Tenant SaaS Architecture* (O'Reilly)
+- Sources consulted: orchestration-layer-spec, delivery-integration-layer, governance-observability-layer, concepts/intelligence-layer, concepts/lead-pipeline-architecture, scoring-quality-metrics
+
+### Key findings
+
+- **Isolation model:** Pool for all three services at MVP. ~300 leads/day across 3 tenants does not justify silo infrastructure. Bridge model is the long-term commercial direction.
+- **#1 architectural win:** Change Scoring Agent concurrency cap from global (5) to per-tenant (2 per tenant). Current global cap allows one tenant's batch to starve all others — textbook noisy neighbor. Per-tenant semaphore keyed on tenant_id fixes this in ~20 lines of code.
+- **Ingestion:** Job queue absorbs spikes; every job stamped with tenant_id at intake; per-tenant rate limits per channel connector; lineage writes are non-negotiable (must not be batched or delayed); idempotent enrichment required before retry logic added.
+- **Orchestration+LLM:** Per-tenant concurrency cap; per-tenant LLM config stored in tenant record; system message used for prompt caching; 60s hard timeout enforced; crash recovery via pipeline_stage already locked in design.
+- **Reporting:** quality_snapshots is the enforced read model — no dashboard query touches raw pipeline tables; read replica connection string separated from day one; RBAC enforced server-side in API layer; scheduled reports pre-computed by background job; per-tenant LLM cost metering logged at call time.
+- **Tiering framework:** Basic/Standard/Premium config schema designed now, activated later. Per-tenant config fields for concurrency cap, token budget, API rate limit, report schedule.
+- **Five changes that move the needle now:** (1) per-tenant concurrency cap, (2) per-tenant config schema with limit fields, (3) tenant_id stamped at queue intake, (4) quality_snapshots rule enforced, (5) LLM token usage logged per tenant per call.
+
+### Constraints verified
+
+- All 15 recommendations cross-checked against locked design decisions. No conflicts with: 1 LLM call per lead, governance failure must not halt pipelines, delivery failures never roll back Pipeline 1, system proposes / human approves, lineage write-order rule, pipeline_stage crash safety guarantee, RLS + JWT + RBAC.
+
+---
+
 ## [2026-04-22] schema-update | Cross-document propagation — Delivery and Integration Layer
 
 - Trigger: delivery-integration-layer.md created; all other docs updated to reference it and reflect its position in the system architecture
