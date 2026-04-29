@@ -207,7 +207,7 @@ Each signal is stored as:
   dimension            : fit | intent | engagement | behavioral | context
   name                 : "pricing_request"
   description          : "Lead explicitly asked for pricing or a quote"
-  detection_rule       : [TBD — format not yet locked; see open decisions]
+  detection_rule       : { type, source_fields, params }  ← see [[analyses/signal-detection-rule-spec]]
   weight_within_dim    : float
   applicable_to        : B2B | B2C | both
 }
@@ -215,7 +215,7 @@ Each signal is stored as:
 
 S1 has formally confirmed `signal` and `signal_evaluation` as distinct data entities. `signal` stores the question (what to look for). `signal_evaluation` stores the per-lead answer (what was actually found). These are the data model backing the fill-in-the-blanks mechanism.
 
-The `detection_rule` format is `[TBD]`.
+The `detection_rule` format is now locked — see [[analyses/signal-detection-rule-spec]]. Format: `{ type, source_fields, params }`. Execution uses a strategy-pattern registry of pre-built extractors. Every extractor returns `(detected: bool, value: float 0.0–1.0, evidence: str)`.
 
 Stored in: `signal` table (S1 entity)
 
@@ -974,7 +974,7 @@ The orchestrator sits between the data layer (S1) and the intelligence layer (S2
 | `leads.pipeline_stage` — exact field name and all accepted string values | S1 | **RESOLVED** — values locked by this document: captured → fetched → enriched → normalised → scored → delivered / human_review / failed. S1 implements exactly these strings. |
 | Data store for pipeline execution and lineage | S1 | **RESOLVED** — three entities confirmed: `pipeline_run` (run-level), `task_execution` (step-level), `lineage_record` (provenance). Orchestrator writes to all three after every stage. |
 | Scoring Agent output JSON schema | S2 | **RESOLVED** — schema locked. Key fields: `score` (int), `bucket` (lowercase string), `reasoning` (string), `lead_completeness` (float 0.0–1.0), `sub_scores` (object), `recommended_action` (string), `needs_review` (bool), `schema_version`, `prompt_version`, `model`. |
-| Signal `detection_rule` format and evaluation engine | S2 | `[TBD]` |
+| Signal `detection_rule` format and evaluation engine | S2 | **RESOLVED 2026-04-28** — named extractor + params. See [[analyses/signal-detection-rule-spec]]. |
 
 ### Soft Blockers — resolved
 
@@ -1001,7 +1001,7 @@ Updated 2026-04-22 — items resolved by S1 entity catalog and S2 intelligence l
 | `human_review_queue` existence and schema | S1 | **RESOLVED** — no separate table; filtered view of leads |
 | Scoring Agent output schema (incl. completeness field) | S2 | **RESOLVED** — locked by S2 design spec |
 | Onboarding / ICP / Signal Agent output schemas | S2 | **RESOLVED** — PersonaObject, IcpDefinition, and signal entity all defined |
-| Signal `detection_rule` format + evaluation engine | S2 | `[TBD]` |
+| Signal `detection_rule` format + evaluation engine | S2 | **RESOLVED 2026-04-28** — see [[analyses/signal-detection-rule-spec]]. |
 | Sub_scores field list (4 fields vs 5 dimensions) | S2 | **SOFT OPEN** — S2 should clarify whether behavioural and context are separate sub-score fields or collapsed |
 | Scoring Agent concurrency cap | Team | Recommend 5; team decision needed |
 | Timeout threshold for concurrency guard | Team | Recommend 15–30 min; team decision needed |

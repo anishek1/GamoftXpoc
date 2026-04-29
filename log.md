@@ -4,6 +4,192 @@
 
 ---
 
+## [2026-04-30] analysis | Lead Enrichment + Investigation Architecture — Full Rewrite
+
+- File rewritten: [[wiki/analyses/lead-enrichment-architecture]]
+- File deleted: [[wiki/analyses/enrichment-provider-stack]] — merged in
+- Triggered by: design conversation on lead investigation, scraper reliability, and India-specific provider stack
+
+### What changed
+
+**PDL on hold:** Poor coverage for Indian B2C (~20–30%) and B2B SMBs — not reliable enough for the primary pipeline.
+
+**Two-phase enrichment model introduced:**
+- Phase 1 (sync, before initial score): Tier 1 first-party + Tier 2 identity (Truecaller + Google Places)
+- Phase 2 (async investigation, runs on every lead): deep social + business enrichment; score updates when complete
+
+**India-specific investigation stack locked:**
+- B2B: GST API (turnover slab — free, official), MCA API (company type/capital — free, official), JustDial (SMB profile), IndiaMART (trader/buyer status), Apollo.io (corporate employees only)
+- B2C: Truecaller bio (lifestyle signals), Instagram Graph API (official), Apify Instagram (public posts only)
+- Dropped: LinkedIn post scraping (too unreliable), Facebook profile scraping (mostly private, near-zero yield), WhatsApp investigation (closed system)
+
+**Key insight:** Phone number is India's primary identity layer. Truecaller + GST + MCA give more reliable signal for Indian leads than any Western data provider. GST turnover slab directly answers B2B budget qualification.
+
+**3 new B2B extractor types added:** gst_turnover_threshold, company_type_match, business_directory_presence (in addition to 3 existing B2C types)
+
+**Cost model revised:** ~$180–270/mo at 300 leads/day (down from prior estimate due to free government APIs replacing paid providers)
+
+### Open items carried forward
+- 6 new extractor types not yet in signal-detection-rule-spec
+- identity_graph and channel_connection entities not yet in data-entity-model
+- lead_completeness formula not yet defined
+- JustDial/IndiaMART: API vs scrape path not confirmed
+- YouTube identity link practical path not confirmed
+
+---
+
+## [2026-04-28] analysis | Enrichment Provider Stack + Channel Integration Decisions
+
+- File created: [[wiki/analyses/enrichment-provider-stack]]
+- Triggered by: design conversation on exact tools, configuration, and day-1 enrichment coverage
+
+### What was decided
+
+**Provider stack locked:**
+- Truecaller for Business — phone verification + India location coverage (~$0.001/call)
+- People Data Labs (PDL) — phone/username → social handles + LinkedIn URL; pay-per-match only
+- Apollo.io — LinkedIn URL → structured B2B data (job title, company, seniority)
+- Instagram Graph API — IGSID/username → bio + profile (free, tenant Meta token)
+
+**Internal identity graph as caching layer:**
+- Checked before any external call; populated after every successful enrichment
+- Day 1: every lead goes to external providers
+- Over time: cache hit rate rises, external calls decrease
+- Cannot replace external providers on day 1 — starts empty
+
+**Why build-it-ourselves alone fails:**
+- Internal identity graph starts empty; no enrichment coverage on first run
+- SerpAPI search is a fallback, not a primary provider
+- Real provider (PDL) needed from day 1
+
+**Per-channel free data from webhook:**
+- WhatsApp: phone + display name + message (display name avoids Truecaller name call)
+- Instagram DM: IGSID → one Graph API call → username (Tier 3 enrichment starts here, free)
+- Facebook DM: PSID → name only (thinnest enrichment path)
+- LinkedIn Lead Ad: full profile included (skip all external calls)
+
+**Non-text message types locked:** image (URL stored), audio (Whisper deferred), story reply (text + story ref — strong signal), product catalogue tap (product ID — highest intent signal), button click (label — strong intent)
+
+**WhatsApp options locked:** Direct WABA (our Meta App) or BSP connector (Interakt/WATI/AiSensy) — adapter pattern, both produce identical NormalisedEvent
+
+**Coverage expectations set:** PDL hits ~20–30% Indian B2C, ~40–55% B2B — expected behavior, not failure; low-coverage leads scored on message content + channel signals
+
+**Cost model:** ~$270/mo at 300 leads/day; drops to ~$110/mo at 60% cache hit rate (Month 6+)
+
+### Open items
+- `identity_graph` entity not yet in data entity model — needs to be added
+- Cache TTL for identity graph entries (topic_affinity especially can go stale)
+- Instagram biography field availability for personal vs. creator accounts
+- Whisper transcription for voice notes — deferred, flagged for post-MVP
+
+---
+
+## [2026-04-28] analysis | Lead Enrichment Architecture + Channel Integration Layer
+
+- Files created: [[wiki/analyses/lead-enrichment-architecture]], [[wiki/analyses/channel-integration-layer]]
+- Triggered by: design discussion on how enrichment works, how tenants connect platforms, and how Tier 3 social enrichment improves B2C scoring accuracy
+
+### What was decided
+
+**Signal separation principle (non-negotiable architectural rule):**
+- Signals are created ONLY from ICP + tenant persona in Pipeline 2 — no lead data involved
+- Enrichment is independently collected in Pipeline 1 — no signal awareness
+- Signal evaluation is the bridge: detection_rules run against NormalisedEvent to produce 0.0–1.0 values
+- These three steps are always distinct and must never be conflated
+
+**Three-tier enrichment model:**
+- Tier 1: first-party interaction data (message content, website behavior, lead history) — always available, $0
+- Tier 2: identity resolution + firmographic (Truecaller for phone verify, Clay/PDL for social handle discovery, Apollo/Clearbit for B2B firmographic) — ~$0.005–$0.02/lead
+- Tier 3: social behavioral enrichment (Instagram Graph API for public profile + posts, Apollo for LinkedIn topics) — ~$0.02–$0.10/lead, requires Tier 2 to have found a social handle
+
+**Tier 3 step-by-step from name + phone:**
+1. Truecaller → verified name, city, spam check
+2. Clay/PDL identity graph → Instagram handle / LinkedIn URL (if indexed)
+3a. Instagram Graph API → bio, recent post hashtags → topic_affinity inferred
+3b. Apollo → LinkedIn job + posting topics
+- Realistic Tier 3 success rate from WhatsApp: 15–25% (private accounts and no Meta phone registration = no Tier 3)
+
+**Source channel affects enrichment difficulty:**
+- Instagram DM / Facebook DM → social user ID in event payload → Tier 3 requires no lookup
+- LinkedIn Lead Ad → full profile in form response → richest inbound source
+- WhatsApp → phone only → all 3 steps required
+
+**NormalisedEvent field expansion:** 6 new fields for Tier 2 identity handles + Tier 3 social behavioral data
+
+**New extractor types required for B2C:** `topic_affinity_match`, `interest_category_match`, `bio_keyword_match` — must be added to signal-detection-rule-spec and Persona Agent Step 3 prompt
+
+**New entity required:** `channel_connection` — not yet in data entity catalog; covers OAuth tokens, webhook endpoints, connection status per platform per tenant
+
+**enrichment_tier_reached field** needed on `lead_enrichment` entity
+
+### Files created
+- [[wiki/analyses/lead-enrichment-architecture]] — enrichment tiers, Tier 3 flow, signal separation, NormalisedEvent expansion, new extractor types, B2C vs B2B strategy
+- [[wiki/analyses/channel-integration-layer]] — OAuth flow per platform, channel_connection entity, webhook + polling event detection, payload normalisation adapters, token lifecycle
+
+### Follow-up items flagged
+- Add `channel_connection` to [[concepts/data-entity-model]] Group A
+- Add `enrichment_tier_reached` field to `lead_enrichment` entity definition
+- Add 3 new B2C extractor types to [[analyses/signal-detection-rule-spec]] and update Persona Agent Step 3 system prompt
+- Confirm Clay.com vs PDL as primary Tier 2/3 provider
+- Confirm Instagram Graph API scope for public post reading
+
+---
+
+## [2026-04-28] analysis | Signal Detection Rule — Format Specification
+
+- File created: [[wiki/analyses/signal-detection-rule-spec]]
+- Triggered by: design discussion on event trigger → lead enrichment flow; detection_rule was the last hard blocker
+- Status: RESOLVES hard blocker flagged in 8 documents across the wiki
+
+### What was decided
+- **Format:** `{ type, source_fields, params }` — named extractor + params
+- **Vocabulary:** 13 pre-built extractor types covering all 5 scoring dimensions (keyword_match, question_pattern, urgency_indicator, budget_authority_indicator, touchpoint_count, channel_diversity, recency_check, page_visit_match, form_completion_depth, source_type_match, utm_match, geography_match, company_attribute_match)
+- **Output contract:** every extractor returns `(detected: bool, value: float 0.0–1.0, evidence: str)` — uniform across all types
+- **No composition:** one extractor per signal; AND/OR logic is not supported; composition is handled by multiple signals across dimensions
+- **Persona Agent change:** Step 3 now emits detection_rule JSON directly (not a placeholder). No engineering mapping step. Vocabulary table given in Step 3 system prompt.
+- **Stateful extractors noted:** touchpoint_count, channel_diversity, recency_check require lead_history from DB — enrichment is not purely stateless
+- **NormalisedEvent schema defined:** minimal schema all event sources normalize into before Pipeline 1 runs
+
+### Files updated (blocker resolved in all)
+- [[wiki/analyses/persona-agent-spec]] — Step 3 logic + output schema + open decisions
+- [[wiki/analyses/orchestration-layer-spec]] — signal schema section + enrichment step + two open decisions table entries
+- [[wiki/analyses/execution-type-classification]] — Open Question 3 + Follow-up 3
+- [[wiki/analyses/tech-stack-research]] — Open Items #1 + Follow-up #5
+- [[wiki/analyses/service-scaling-strategy]] — Caveats section
+- [[wiki/concepts/data-entity-model]] — Open Questions (signal schema)
+- [[wiki/overview]] — Open Question #1, What's TBD, What to Read Next, #12
+- [[index]] — new analysis entry added
+
+---
+
+## [2026-04-26] analysis | Technology Stack Research — Complete Production Stack
+
+- File created: [[wiki/analyses/tech-stack-research]]
+- Triggered by: team request to research all tools for production microservices build
+- Context established: AWS confirmed, EC2 account available, web chat on product site, signal detection_rule still TBD, senior dev decision = Microservices (not Monolithic)
+
+### Locked decisions (no further discussion needed)
+- Backend: Python 3.12 + FastAPI + Uvicorn + uv
+- LLM: Anthropic Claude Sonnet 4.6 (primary) + OpenAI GPT-4o (fallback) via LiteLLM
+- Containers: AWS ECS Fargate
+- Auth: Clerk (native multi-tenancy, free tier, 4-role RBAC)
+- Secrets: AWS Secrets Manager
+- Observability: CloudWatch (MVP) → Grafana Cloud + Prometheus (Month 3+)
+- Package manager: uv
+- Ruled out: Laravel/PHP (no LLM ecosystem), Go (SDK friction), EKS (overkill), Lambda (15-min timeout), Datadog (cost), Auth0 (cost), Groq (no prompt caching), Vault (overkill), CockroachDB (overkill), Neon/Supabase (not AWS-native)
+
+### Three open decisions (pending team discussion)
+1. **Orchestration:** Temporal self-hosted on EC2 (~$30/mo, native crash recovery) vs AWS Step Functions (~$0.05/mo, no mid-task resumption) — full landscape of 14 tools researched; Celery/Airflow/Prefect/Dagster all ruled out
+2. **Real-time chat:** Pusher + Beams (~$49/mo, zero ops) vs Soketi on EC2 + FCM (~$35/mo, Pusher-compatible, same code) — full landscape of 13 tools researched
+3. **Database:** Aurora Serverless v2 (~$94/mo, zero ops, auto-scale) vs PostgreSQL on EC2 (~$42/mo, team owns ops) — full landscape of 10 options researched
+
+### Budget scenarios documented
+- Scenario A (Managed): ~$357/month excl. LLM tokens
+- Scenario B (Hybrid self-hosted): ~$288/month excl. LLM tokens
+- LLM cost (steady state with prompt caching): ~$27/month for 300 leads/day
+
+---
+
 ## [2026-04-26] analysis | Agent Specifications — Persona Agent, Rating Agent, Future Optional Agents
 
 - Files created: [[wiki/analyses/persona-agent-spec]], [[wiki/analyses/rating-agent-spec]], [[wiki/analyses/future-optional-agents]]

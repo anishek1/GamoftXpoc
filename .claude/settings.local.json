@@ -5,7 +5,8 @@
       "Bash(python -c \"import docx; print\\('python-docx available'\\)\")",
       "Bash(python -c \"import docx\")",
       "Bash(powershell -command ' *)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "WebSearch"
     ]
   }
 }

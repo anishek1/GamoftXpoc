@@ -211,7 +211,7 @@ Tenant inputs (+ optional re-run context)
 - For each dimension, decide how many signals are needed (Intent: ≥5, Engagement: ≥6, others: sufficient to cover the domain — more signals = richer scoring but longer prompt)
 - For each signal: provide a name (machine-readable slug), a description (what it means, what counts as detected), a weight within its dimension (must sum to 1.0 per dimension), and an `applicable_to` tag (B2B | B2C | both)
 - For Intent signals especially: think about the *arc of intent progression* — not just individual signals but how the sequence from low to high intent manifests in messages
-- The `detection_rule` field is `[TBD from S2]` — the Persona Agent outputs a placeholder or structured description of the rule; the engineering team maps this to executable rules. The Persona Agent must provide enough specification that the detection_rule can be implemented deterministically
+- The `detection_rule` field is now defined — see [[analyses/signal-detection-rule-spec]]. The Persona Agent outputs a complete detection_rule JSON directly (type + source_fields + params). It is given the extractor vocabulary table in its Step 3 system prompt and must pick a `type` from that table. No engineering mapping step required.
 - For re-runs: identify which signals are stable (re-run context did not change the relevant dimension), which need updating, and whether entirely new signals are warranted
 
 **Output — signal[] (one per signal, across all dimensions):**
@@ -223,7 +223,7 @@ Tenant inputs (+ optional re-run context)
   "dimension": "fit | intent | engagement | behaviour | context",
   "name": "pricing_request",
   "description": "Lead explicitly asked for a price quote or pricing document",
-  "detection_rule": "[TBD — placeholder or rule specification]",
+  "detection_rule": { "type": "keyword_match", "source_fields": ["..."], "params": { "keywords": ["..."] } },
   "weight_within_dim": 0.30,
   "applicable_to": "B2B | B2C | both",
   "version": "string"
@@ -312,7 +312,7 @@ The only data the Rating Agent ever receives from the Persona Agent is what was 
 
 | Decision | Status |
 |---|---|
-| `detection_rule` format (Step 3 signal output) | `[TBD — S2]` Hard blocker for Lead Enrichment code |
+| `detection_rule` format (Step 3 signal output) | **RESOLVED 2026-04-28** — named extractor + params. See [[analyses/signal-detection-rule-spec]]. Persona Agent emits directly (no engineering mapping step). |
 | Number of signals per dimension | Intent ≥5, Engagement ≥6 confirmed; others TBD per tenant during onboarding |
 | Re-run scope: full Pipeline 2 vs ICP+Signal only | Full re-run for persona changes; ICP+Signal-only re-run for feedback-driven patterns `[confirmed in governance spec]` |
 | Check-in cadence (triggers re-run proposal) | `[TBD — 2-week or monthly; team decision]` |

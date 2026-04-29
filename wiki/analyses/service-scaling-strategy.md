@@ -291,7 +291,7 @@ The long-term commercial model is a bridge architecture: all current tenants in 
 
 - **LLM provider choice is TBD** — the specific rate limit numbers depend on which provider is selected (Groq vs OpenAI). Per-tenant limits should be set relative to the provider's account-level limits.
 - **Backend language is TBD** — queue technology (Celery, BullMQ, etc.) depends on this choice.
-- **Signal detection_rule format is still the hard blocker** — no enrichment code can be written without it. The scaling design for enrichment is correct regardless, but implementation waits on this decision.
+- **Signal detection_rule format — RESOLVED 2026-04-28.** Named extractor + params model. Enrichment code can now be written. Scaling design for the enrichment service is unaffected. See [[analyses/signal-detection-rule-spec]].
 - **Alert thresholds for all monitoring** — all to be set after Month 1 baseline. The monitoring infrastructure should be wired from day one; the thresholds get filled in later.
 
 ## Follow-up Questions

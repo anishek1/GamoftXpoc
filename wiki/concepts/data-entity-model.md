@@ -97,7 +97,7 @@ The entity catalog is the contract between all three layers. Without named entit
 
 ## Open Questions
 
-- Schema for `signal` — does it include the dimension type (fit/intent/etc.) and the detection_rule format? Detection rule format is a hard blocker for Lead Enrichment. See [[analyses/orchestration-layer-dependencies]].
+- Schema for `signal` — **RESOLVED 2026-04-28.** Confirmed fields: signal_id, tenant_id, dimension, name, description, detection_rule `{ type, source_fields, params }`, weight_within_dim, applicable_to, version. See [[analyses/signal-detection-rule-spec]] for detection_rule format spec.
 - Does `quality_rule` store rules as SQL, as threshold + field references, or as free text?
 - How does `report_definition` relate to `dashboard_definition` — subset or separate artifact?
 - What triggers `alert_incident` creation — governance monitoring job, or `task_execution` failure directly?

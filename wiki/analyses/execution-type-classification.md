@@ -267,7 +267,7 @@ For each signal defined in P2-4, the orchestrator runs the `detection_rule` agai
 {revisit_count}      → 3
 ```
 
-This is fully deterministic. The `detection_rule` format is `[TBD from S2]` — but regardless of format (regex, structured rule, lookup), execution is deterministic: given the same data, extraction produces the same values. This is not an LLM call.
+This is fully deterministic. The `detection_rule` format is now locked — see [[analyses/signal-detection-rule-spec]]. Format: `{ type, source_fields, params }` using a named-extractor vocabulary. Execution uses a strategy-pattern registry; given the same data, extraction always produces the same values. This is not an LLM call.
 
 **Why this step is separated from Scoring:** Keeping extraction deterministic means scoring errors and extraction errors are independently debuggable. If a lead gets a wrong bucket, you can inspect the extracted signal values to determine whether the error was in extraction (wrong values) or scoring (wrong judgment from correct values).
 
@@ -542,7 +542,7 @@ Signal extraction uses `detection_rules` defined by the Signal Agent (AGENT) to 
 
 2. **Team lead recommendation wording (G-9):** Should the recommendation message to the team lead be LLM-generated (explaining the detected pattern in plain English) or templated (pattern fields inserted into a fixed format)? If LLM-generated, G-9 shifts from AUTOMATION to HYBRID. **Owner: team decision.**
 
-3. **Signal detection_rule format (P1-2b):** The format is `[TBD from S2]`. If detection_rules support calling an LLM for ambiguous signals, signal extraction would shift from AUTOMATION to HYBRID. The design intent is fully deterministic extraction — this TBD must preserve that intent. **Owner: S2. Hard blocker for enrichment code.**
+3. **Signal detection_rule format (P1-2b):** **RESOLVED 2026-04-28.** Named extractor + params model. Fully deterministic — no LLM call in extraction. P1-2b AUTOMATION classification is protected. 1-LLM-call-per-lead guarantee preserved. See [[analyses/signal-detection-rule-spec]].
 
 4. **Disqualification rule configuration (P1-6):** Disqualification rules are tenant-defined at onboarding. If rules can include free-text conditions interpreted by the LLM, the Disqualification Gate shifts from AUTOMATION to HYBRID. Design intent is static rules only. **Owner: to be locked at tenant onboarding spec.**
 
@@ -564,4 +564,4 @@ Signal extraction uses `detection_rules` defined by the Signal Agent (AGENT) to 
 
 1. Lock the proactive check-in intent classifier as rule-based or LLM — this changes G-10's execution type.
 2. Lock the team lead recommendation wording as templated or LLM-generated — this changes G-9's execution type.
-3. Lock `signal.detection_rule` format as fully deterministic — this protects P1-2b's AUTOMATION classification (and preserves the 1-LLM-call-per-lead guarantee).
+3. ~~Lock `signal.detection_rule` format~~ — **RESOLVED 2026-04-28.** Locked as fully deterministic named-extractor model. P1-2b AUTOMATION classification confirmed. See [[analyses/signal-detection-rule-spec]].

@@ -28,7 +28,7 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 
 **What's deferred:** The Adaptive Signal Lifecycle (Add-ons 6/7/8) — requires 2-3 months of real production data.
 
-**What's TBD:** ~50+ open decisions in Section 16 of source doc, plus: signal detection_rule format, Pipeline 2 re-run triggers, prompt template versioning, onboarding/ICP/signal agent output schemas, Scoring Agent concurrency cap (recommend 5), concurrency guard timeout threshold (recommend 15–30 min), alert thresholds for monitoring (all after Month 1 baseline), secrets vault choice (AWS vs HashiCorp), auth library, observability tooling.
+**What's TBD:** ~50+ open decisions in Section 16 of source doc, plus: Pipeline 2 re-run triggers, prompt template versioning, Scoring Agent concurrency cap (recommend 5), concurrency guard timeout threshold (recommend 15–30 min), alert thresholds for monitoring (all after Month 1 baseline), observability tooling. **signal detection_rule format — RESOLVED 2026-04-28** (see [[analyses/signal-detection-rule-spec]]). Tech stack locked 2026-04-26 (see [[analyses/tech-stack-research]]).
 
 ## Major Themes
 
@@ -69,7 +69,7 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 
 ## Open Questions
 
-1. **Signal detection_rule format:** How are signal values extracted deterministically? What evaluation engine? `[TBD from S2]` — hard blocker for orchestrator Lead Enrichment stage. Now also a hard blocker for the `signal` entity schema in the data model.
+1. **Signal detection_rule format:** **RESOLVED 2026-04-28.** Named extractor + params model. 13 extractor types covering all 5 dimensions. Persona Agent emits detection_rules directly (no engineering mapping step). Fully deterministic — preserves 1-LLM-call-per-lead guarantee. See [[analyses/signal-detection-rule-spec]].
 2. **Pipeline 2 re-run triggers:** Proactive check-in cadence (2-week or monthly?) and feedback-driven flagging threshold (fixed count N = ?) `[TBD — team decision after Month 1]`
 3. **Lead completeness score formula and threshold:** Confirmed it's completeness (not LLM confidence) — see [[analyses/confidence-scoring-brainstorm]]; formula and `needs_review` threshold `[TBD]`
 4. **Technology stack:** Backend language, LLM provider (Groq vs OpenAI — open decision in intelligence layer spec), model config scope (global vs per-tenant), prompt storage (code vs data layer), secrets vault (AWS vs HashiCorp), observability tooling — all `[TBD]`
@@ -82,11 +82,11 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 11. **~50 additional TBDs** in Section 16 of [[sources/2026-lead-intelligence-engine-reference]]
 
 11. **Intelligence layer open decisions:** Primary LLM provider, model config scope, prompt storage location, custom rules format (free-text vs structured pre-LLM execution), bucket disagreement handling — 6 open decisions from [[sources/2026-intelligence-layer-design]] Section 7.
-12. **Data entity open questions:** `signal` entity schema (detection_rule format); `quality_rule` storage format; relationship between `report_definition` and `dashboard_definition`; `alert_incident` creation trigger.
+12. **Data entity open questions:** `signal` entity schema — **RESOLVED 2026-04-28** (detection_rule format locked, see [[analyses/signal-detection-rule-spec]]); `quality_rule` storage format; relationship between `report_definition` and `dashboard_definition`; `alert_incident` creation trigger.
 
 ## What to Read Next
 
-- **Immediate:** Define `signal detection_rule` format with S2 — this is a hard blocker; no lead enrichment code can be written without it
+- ~~**Immediate:** Define `signal detection_rule` format~~ — **RESOLVED 2026-04-28.** See [[analyses/signal-detection-rule-spec]].
 - **Immediate:** Lock `leads.pipeline_stage` accepted string values with S1 — orchestrator reads and writes this field at every stage
 - **Immediate:** Lock `pipeline_log` schema with S1 — lineage must be built before the second LLM agent is added
 - **Next sprint:** Define Gamoft B2B persona and run Pipeline 2 end-to-end — easiest tenant (self-knowledge) and the only way to validate the onboarding flow
