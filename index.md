@@ -1,11 +1,11 @@
 ---
-last_updated: 2026-04-22
+last_updated: 2026-05-01
 source_count: 3
 ---
 
 # Wiki Index
 
-**Last updated:** 2026-04-22 | **Sources ingested:** 3
+**Last updated:** 2026-05-01 | **Sources ingested:** 3
 
 *This file is maintained by the Wiki Agent. Do not edit manually.*
 
@@ -69,6 +69,8 @@ source_count: 3
 - [[wiki/analyses/signal-detection-rule-spec]] — Signal detection_rule format: NormalisedEvent schema, named extractor + params model, 13 extractor types, 5 worked examples, strategy-pattern execution model | date: 2026-04-28 | status: COMPLETE — resolves last hard blocker for Lead Enrichment code
 - [[wiki/analyses/lead-enrichment-architecture]] — Master enrichment + investigation doc: signal-separation principle; two-phase model (sync Tier 1+2, async investigation); India-specific provider stack (Truecaller, Google Places, GST, MCA, JustDial, IndiaMART, Apollo, Instagram); B2B vs B2C investigation paths; NormalisedEvent field expansion; 6 new extractor types; cost model ~$180–270/mo; PDL on hold | date: 2026-04-30 | status: COMPLETE
 - [[wiki/analyses/channel-integration-layer]] — How tenants connect platforms via OAuth (Meta, LinkedIn, website snippet); channel_connection entity; webhooks + polling hybrid event detection; per-platform payload normalisation; token lifecycle management | date: 2026-04-28 | status: COMPLETE
+- [[wiki/analyses/meta-platform-api-deep-research]] — Comprehensive Meta API spec: OAuth/token flows for Facebook Pages, Instagram Business, WhatsApp Cloud API; all webhook fields + payload schemas; Lead Ads retrieval API; rate limits; multi-tenant patterns; App Review requirements | date: 2026-05-01 | status: COMPLETE
+- [[wiki/analyses/meta-integration-implementation]] — Deep implementation: WhatsApp Embedded Signup (JS SDK, code exchange, WABA token); multi-tenant webhook routing (HMAC validation, page_id/phone_number_id routing, dedup, app vs page subscription); Lead Ads retrieval (form pre-fetch, field normalisation, race condition retry, polling fallback); full implementation checklist | date: 2026-05-01 | status: COMPLETE
 - ~~wiki/analyses/enrichment-provider-stack~~ — **MERGED** into lead-enrichment-architecture 2026-04-30; all content preserved there | date: 2026-04-28 | status: DELETED
 - [[wiki/analyses/tech-stack-research]] — Complete production technology stack research: 10 categories fully researched, all locked decisions documented, 3 open decisions pending team input (Temporal vs Step Functions, Pusher vs Soketi, Aurora vs EC2 PostgreSQL), two full-budget scenarios (Managed ~$357/mo, Hybrid ~$288/mo), LLM cost estimate ~$27/mo steady state | date: 2026-04-26 | status: COMPLETE — 3 items pending team decision
 - [[wiki/analyses/rating-agent-spec]] — Rating Agent full specification: inputs (EnrichedLead, signal_values, variant), score output, reasoning output, completeness output (lead_completeness — not LLM confidence), full ScoringOutput schema, per-tenant concurrency cap, failure handling, observability signals | date: 2026-04-26 | status: COMPLETE

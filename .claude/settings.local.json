@@ -6,7 +6,8 @@
       "Bash(python -c \"import docx\")",
       "Bash(powershell -command ' *)",
       "Bash(python *)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:developers.facebook.com)"
     ]
   }
 }

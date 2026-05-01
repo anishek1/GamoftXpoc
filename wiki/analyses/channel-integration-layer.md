@@ -13,7 +13,9 @@ status: COMPLETE
 # Channel Integration Layer
 
 **Question:** How do tenants connect external platforms, and how do lead events enter Pipeline 1?
-**Date:** 2026-04-28
+**Date:** 2026-04-28  
+**Detailed API spec:** [[analyses/meta-platform-api-deep-research]] — precise OAuth flows, token types, all webhook payload schemas, rate limits, multi-tenant patterns  
+**Implementation detail:** [[analyses/meta-integration-implementation]] — Embedded Signup, webhook routing logic, Lead Ads retrieval, implementation checklist
 
 ---
 
@@ -222,8 +224,14 @@ Tenant completes OAuth flow again
 
 - **`channel_connection` entity** must be added to [[concepts/data-entity-model]] Group A (Core Lead Lifecycle)
 - **Webhook secret rotation** — how often, which vault path, service restart implications
-- **Meta app review requirements** — WhatsApp Business API requires Meta Business Verification; `leads_retrieval` permission requires app review. These affect onboarding timeline for tenants.
+- **Meta app review requirements** — RESOLVED in [[analyses/meta-platform-api-deep-research]] Section 1.4. All six Facebook permissions + two Instagram permissions + two WhatsApp permissions require Advanced Access + App Review + Business Verification. Clean first submission: 2–7 days. Plan 2-week buffer before target launch. Business Verification can take up to 60 days if additional documents are needed — start early.
+- **Instagram token refresh job** — IDENTIFIED in [[analyses/meta-platform-api-deep-research]] Section 1.2. Instagram long-lived tokens expire in 60 days (no permanent equivalent exists). Background job required: check daily, refresh when `expires_in` < 604800. If expired before refresh, tenant must redo OAuth.
+- **WhatsApp Embedded Signup vs standard OAuth** — IDENTIFIED in [[analyses/meta-platform-api-deep-research]] Section 1.3. WhatsApp does NOT use a standard OAuth redirect. Requires Embedded Signup flow (Facebook Login for Business product configuration). Returns a Business Integration System User token (non-expiring) rather than a page token.
+- **Instagram API path selection** — IDENTIFIED in [[analyses/meta-platform-api-deep-research]] Section 1.2. Must use Instagram API with Instagram Login path (`instagram_business_*` scopes). Old `business_*` scope names deprecated January 27, 2025. Facebook Login path is legacy.
+- **Lead Ads two-step retrieval** — IDENTIFIED in [[analyses/meta-platform-api-deep-research]] Section 3.4. The `leadgen` webhook delivers only IDs (`leadgen_id`, `form_id`, `ad_id`) — no form field values. A follow-up `GET /{leadgen_id}` call is required to fetch actual lead data. Must happen immediately on webhook receipt.
+- **WhatsApp contact profile picture** — CONFIRMED NOT AVAILABLE in [[analyses/meta-platform-api-deep-research]] Section 5.4. Official Cloud API has no endpoint to retrieve a contact's profile photo. Not a blocker; enrichment falls back to Truecaller for phone-based name lookup.
 - **LinkedIn Marketing API allowlist** — LinkedIn requires application approval for the Marketing Developer Platform. Plan for a 2–4 week approval window per tenant.
 - **Manual channel** — CSV import and direct entry flow not yet designed
 - **Polling interval** — N minutes per channel TBD; tradeoff between recency and API rate limits
 - **Dedup strategy for edge cases** — if webhook fires AND polling picks up the same event, dedup by `platform_event_id` must be idempotent at the DB write level
+- **Lead Ads form field normalization** — Standard field names (email, phone_number, full_name, etc.) are predictable. Custom fields are form-defined and cannot be predicted. Build step: pre-fetch form definition via `GET /{form_id}?fields=questions` at connection time; store field map per tenant per form; unknown fields land in `extra_fields` JSONB. See [[analyses/meta-platform-api-deep-research]] Section 3.4.

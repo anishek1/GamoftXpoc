@@ -4,6 +4,112 @@
 
 ---
 
+## [2026-05-01] analysis | Meta Integration — Deep Implementation
+
+- Wiki page: [[wiki/analyses/meta-integration-implementation]]
+- Triggered by: user request to go deeper on Embedded Signup, webhook routing, and Lead Ads retrieval
+- Sources consulted: [[analyses/meta-platform-api-deep-research]], [[analyses/channel-integration-layer]]
+- Index updated: yes
+- Cross-reference added to: [[analyses/channel-integration-layer]]
+
+### What is covered
+
+- WhatsApp Embedded Signup: Facebook Login for Business product setup, JS SDK `FB.login` call, popup flow, code exchange endpoint, WABA token type, phone_number_id enumeration, WABA webhook registration, signed `state` parameter for multi-tenant security, error cases
+- Multi-tenant webhook routing: response-first architecture (HTTP 200 before processing), HMAC-SHA256 validation on raw bytes, `entry[].id` routing for Facebook/Instagram, `phone_number_id` routing for WhatsApp, event type dispatch inside payload, idempotent dedup via `ON CONFLICT DO NOTHING`, app-level vs page-level subscription distinction, challenge verification, stale connection monitoring
+- Lead Ads retrieval: full sequence from webhook to NormalisedEvent, form definition pre-fetch via `/{page_id}/leadgen_forms`, `lead_form_field_map` table design, normalisation logic with standard + custom field handling, multi-select custom questions, `custom_disclaimer_responses`, race condition retry (code 100), polling fallback via `/{form_id}/leads`, attribution data (ad_id, adgroup_id)
+- Full implementation checklist: 17 components with purpose and notes
+
+---
+
+## [2026-05-01] correction | Meta Platform API Deep Research — Post-Filing Accuracy Fixes
+
+- Wiki page: [[wiki/analyses/meta-platform-api-deep-research]]
+- Triggered by: advisor review identifying 2 blocking + 3 sharpening issues before filing could be considered final
+
+### Fixes applied
+
+**Blocking 1 — Lead retrieval time window (Section 4.3):**
+- Prior text said "no documented expiry" without explanation of the 90-day figure
+- Corrected to: no hard data retention expiry documented; 90-day figure in Meta docs relates to BUC rate limit calculation window, not lead deletion; best practice is fetch-immediately-and-store
+
+**Blocking 2 — Standard Lead Form field names table (Section 3.4):**
+- 14 fields (email through street_address) annotated as doc-confirmed
+- 3 fields (work_email, military_status, marital_status) annotated as [training] — not confirmed in fetched documentation
+- Added `GET /{form_id}?fields=questions` as authoritative source per form
+
+**Sharpen 3 — hub.challenge response (Section 2.1):**
+- Prior wording "respond with the hub.challenge integer value" was ambiguous
+- Corrected to: write the challenge value as plain text HTTP response body, return HTTP 200, no JSON wrapper
+
+**Sharpen 4 — Two-tier webhook subscription model (Section 2.1):**
+- Added explicit note: app-level webhook product configuration in App Dashboard must precede per-page/per-WABA API subscription calls
+- Applies to all surfaces; moved to top of Section 2 so it precedes the per-surface subscription instructions
+
+**Sharpen 5 — Instagram token refresh trigger (Section 1.2):**
+- Moved from follow-up questions into Section 1.2 body
+- Documented: `expires_in` field on long-lived token response is the trigger; refresh when `expires_in` < 604800 (7 days); background job checks daily
+- Removed corresponding question from Follow-up Questions section
+
+---
+
+## [2026-05-01] analysis | Meta Platform API Deep Research
+
+- Wiki page: [[wiki/analyses/meta-platform-api-deep-research]]
+- Triggered by: user request for comprehensive Meta API research for lead intelligence SaaS
+- Sources consulted: 30+ Meta developer documentation pages via live web research
+- Index updated: yes
+
+### What is covered
+
+**OAuth / Authorization:**
+- Facebook Pages: short-lived user → long-lived user → long-lived page token (non-expiring). All permissions (pages_messaging, pages_manage_metadata, leads_retrieval, etc.) require Advanced Access + App Review + Business Verification.
+- Instagram: Instagram API with Instagram Login path confirmed as current. Old `business_*` scopes deprecated January 27, 2025. New `instagram_business_*` scopes required. Long-lived Instagram User tokens valid 60 days — must refresh. No permanent token equivalent.
+- WhatsApp: Embedded Signup flow → Business Integration System User token (non-expiring). One app serves multiple WABA tenants. Token type is per-tenant WABA, not per-user.
+
+**Webhook fields + payload schemas:**
+- Facebook Pages: messages, messaging_postbacks, messaging_optins, messaging_handovers, messaging_policy_enforcement, message_deliveries, message_reads, feed, leadgen — full field list documented.
+- Instagram: messages, comments, live_comments, message_echoes, message_reactions, messaging_handover, messaging_optins, messaging_postbacks, messaging_referral, messaging_seen, story_insights — full JSON payloads for DM and comment events.
+- WhatsApp: single `messages` field covers all inbound + status updates. Full payload schema with metadata, contacts, messages, statuses arrays documented.
+
+**Data available per event vs follow-up calls:**
+- Facebook DM: PSID in payload; name + profile_pic require follow-up GET /{psid}?fields=...
+- Instagram DM: IGSID in payload; username/name/profile_pic require User Profile API call (consent-gated). Comments DO include username directly.
+- WhatsApp: wa_id + profile.name in payload; profile picture/about NOT available via official Cloud API — confirmed limitation.
+
+**Meta Lead Ads:**
+- leadgen webhook delivers: leadgen_id, page_id, form_id, ad_id, created_time — no form values.
+- Lead Retrieval API: GET /{leadgen_id} → field_data array with name/values. Standard field names documented.
+- Permissions required: leads_retrieval, pages_manage_metadata, pages_show_list, pages_read_engagement, ads_management.
+
+**Rate limits:**
+- Page tokens: 4800 * engaged_users per 24h (BUC model)
+- WhatsApp Management API: 200–5000 req/hour by account tier
+- WhatsApp outbound tiers: TIER_250 → TIER_1K → TIER_10K → TIER_100K → Unlimited
+- WhatsApp Cloud API max send throughput: 1000 messages/sec
+- Inbound webhooks: no documented rate limit
+
+**Multi-tenant:**
+- One app, unlimited tenants confirmed.
+- Routing key: page_id / IGID for Meta surfaces; phone_number_id for WhatsApp.
+- System User vs Page token vs Business Integration System User — use cases distinguished.
+- Token revocation: 401 error + deauthorize_callback_url; protocol documented.
+
+### Open items resolved from channel-integration-layer
+
+- Meta App Review requirements: RESOLVED — 2–7 days, submit 2 weeks early, all permissions listed
+- WhatsApp Business Verification: RESOLVED — required for Advanced Access; ~5 days, up to 60 days
+- Token lifecycle details: RESOLVED — page tokens non-expiring; Instagram 60-day refresh required; WhatsApp non-expiring
+
+### New open items raised (added as follow-up questions in wiki page)
+
+- Instagram token refresh job cadence
+- Facebook DM profile lookup for privacy-strict users
+- Instagram username Conversations API workaround vs User Profile API
+- TIER_250 onboarding limitation documentation for tenants
+- form_id → field name mapping table design
+
+---
+
 ## [2026-04-30] analysis | Lead Enrichment + Investigation Architecture — Full Rewrite
 
 - File rewritten: [[wiki/analyses/lead-enrichment-architecture]]
