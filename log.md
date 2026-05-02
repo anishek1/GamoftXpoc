@@ -4,6 +4,62 @@
 
 ---
 
+## [2026-05-03] analysis | Meta Integration — Facebook + Instagram Connection Strategies + Pipeline Connection Point
+
+- Files updated:
+  - wiki/analyses/meta-integration-implementation.md — Added Section 1 (Facebook Page OAuth: token chain, page selection, PSID profile call, non-expiring page tokens), Section 2 (Instagram Business OAuth: Instagram Login path, 60-day token refresh job, per-app-level webhook config, IGSID User Profile API); renumbered WhatsApp to Section 3, Webhook Routing to Section 4, Lead Ads to Section 5, Checklist to Section 6; fixed SQL operator precedence bug in Section 4.4; added supersedes note for channel-integration-layer; updated checklist with 8 new items
+  - wiki/analyses/global-data-collection-architecture.md — Added Section 14: two-path pipeline entry diagram (DM vs Lead Ad), NormalisedChannelEvent schema, Lead Ad pre-population field map, Instagram dual role (channel + enrichment source), Facebook PSID call at Step 9, WhatsApp identity constraints, full API call map by step with costs, Meta-to-Pipeline boundary definition
+- Entities updated: none
+- Concepts updated: none
+- Key findings:
+  - Facebook Page tokens are non-expiring; no refresh job needed
+  - Instagram tokens expire in 60 days; daily refresh job mandatory; no server-side recovery after expiry
+  - Instagram webhook subscribed once at App Dashboard level — no per-account API call (unlike Facebook which requires POST /{page_id}/subscribed_apps per page)
+  - Two distinct Pipeline 1 entry points: DM events enter at Step 0, Lead Ad events enter at Step 3 (skip Message Parser and Signal Scorer)
+  - Instagram plays dual role: channel source AND enrichment API at Step 9 (Person Resolver)
+  - NormalisedChannelEvent schema defined as the contract between Meta layer and Pipeline 1
+  - Supersedes: channel-integration-layer.md Instagram-via-Facebook-Page description; per-tenant webhook URL implication
+
+---
+
+## [2026-05-03] analysis | Global Lead Data Collection Architecture
+
+- Wiki page: [[wiki/analyses/global-data-collection-architecture]]
+- Triggered by: multi-session design conversation covering B2B/B2C classification, global enrichment, no-scraping constraint, failure modes, and production-readiness gaps
+- Sources consulted: [[analyses/lead-enrichment-architecture]], [[analyses/orchestration-layer-spec]], [[analyses/signal-detection-rule-spec]], [[analyses/channel-integration-layer]], [[analyses/tech-stack-research]]
+- Index updated: yes
+
+### What is covered
+
+- **Pre-filter gate:** noise/spam/short messages discarded before any API or LLM call
+- **Message Parser (Haiku LLM):** multilingual, typo-tolerant extraction of name, company, role, location, intent, business ownership signals — solves Hinglish/non-English message failure
+- **Revised LLM principle:** 1 Sonnet call per lead (Scoring Agent) + 1 Haiku call (Message Parser); no other LLM on data collection path
+- **Free Signal Scorer:** deterministic B2B/B2C classification from available signals; catches micro-business owners via "I run a business" phrases
+- **Jurisdiction Classifier:** libphonenumber + VAT/GST format heuristics; LLM only for ambiguous multinational cases
+- **Account Graph Check:** detects multiple leads from same company; injects account-level engagement signal into Scoring Agent context
+- **Conversation Thread Check:** prevents follow-up replies creating duplicate lead records; enables automated clarification re-scoring
+- **Company Cache:** company_name + country_code key; 30-day TTL for registry data, 14-day for website intel
+- **Company Disambiguator:** confidence threshold 80%; below threshold surfaces top matches to salesperson rather than silently picking wrong company
+- **Company Resolver:** registry-driven fallback chain (Apollo → official gov API → OpenCorporates); SMB not-found handled gracefully with completeness penalty
+- **Person Resolver:** staleness check (6-month window), phone cross-reference for identity_verified flag
+- **Location Reconciliation:** separates lead_location from company_hq; prevents Lucknow being attributed to InMobi
+- **Consent Gate:** DPDP (India) and GDPR (EU) policy check before enrichment proceeds
+- **Intent Gate:** automated clarification for very_low intent + high fit leads; clarification_pending state locks salesperson manual contact
+- **Global Source Registry:** India (Truecaller, MCA21, GST), UK (Companies House), US (EDGAR, OpenCorporates), EU (VIES), ME (Apollo only), SEA (ACRA, OpenCorporates)
+- **Feedback Loop 2:** salesperson feedback (wrong company, stale role) invalidates cache and flags Apollo confidence — enrichment quality improves over time
+- **4 real-world scenarios:** Enterprise B2B/InMobi (happy path), SMB catering business (not-found path), Hinglish message (language path), UK Barclays CTO (international path)
+- **Supersedes:** India-specific provider stack in lead-enrichment-architecture (2026-04-30); signal separation principle and NormalisedEvent schema in that doc remain valid
+
+### Key decisions from this session
+
+- No scraping anywhere in the pipeline — all sources are official APIs or licensed commercial APIs
+- Apollo.io is the global spine for B2B; Truecaller is the India B2C spine
+- LLM (Haiku) used for message parsing because real messages are multilingual and typo-heavy — no regex can replace this
+- Registry pattern replaces all hard-coded per-jurisdiction logic; source changes are config updates, not code deploys
+- Company-level cache (not per-lead) is the primary cost optimization
+
+---
+
 ## [2026-05-01] analysis | Meta Integration — Deep Implementation
 
 - Wiki page: [[wiki/analyses/meta-integration-implementation]]

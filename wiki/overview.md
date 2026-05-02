@@ -1,12 +1,12 @@
 ---
 type: overview
-last_updated: 2026-04-22
+last_updated: 2026-05-03
 source_count: 3
 ---
 
 # Knowledge Base Overview
 
-**Last updated:** 2026-04-22 | **Sources ingested:** 3
+**Last updated:** 2026-05-03 | **Sources ingested:** 3
 
 ## What This Wiki Is About
 
@@ -25,6 +25,10 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 **What's locked:** The 5 design principles, the two-pipeline architecture, 4 LLM agents (Onboarding, ICP, Signal, Scoring), deterministic signal extraction, fill-in-the-blanks prompt mechanism, bucket thresholds (80/55/0 — starting points), 5 Add-ons, Postgres state store, serial build order, governance layer failure must not halt pipelines, system proposes / human approves on all config changes. The Intelligence Layer's four-component internal design (Persona Engine → Prompt Layer → Rating Agent → Output Schema Layer) and its `score_lead()` interface are now specified. The full data entity catalog (32 entities across 3 groups) is now documented. The five scoring dimensions (Fit 25%, Intent 25%, Engagement 20%, Behaviour 20%, Context 10%) and their default weights are locked.
 
 **What's changed from original source doc:** Pipeline count (1 → 2), LLM agent count (1 → 4), bucket thresholds (75/45 → 80/55), pipeline stage names updated, Governance Layer added as explicit cross-cutting layer, quality metrics fully wired to orchestration layer. **Correction (2026-04-22):** The "confidence" field in the intelligence layer design is a **lead completeness score**, not LLM self-assessed confidence. LLMs are poorly calibrated; the field measures completeness of enriched lead data instead. Routing logic and `needs_review` flag are unchanged.
+
+**The Global Data Collection Architecture is now defined (2026-05-03).** The lead data collection pipeline is fully specified in [[analyses/global-data-collection-architecture]]. Key decisions: no scraping anywhere (official APIs and licensed commercial APIs only); Apollo.io is the global B2B spine; Truecaller is the India B2C spine; a registry-driven fallback chain replaces all hard-coded per-jurisdiction logic. The LLM call principle is revised — 1 Sonnet call per lead (Scoring Agent) + 1 Haiku call (Message Parser) for multilingual/typo-tolerant message extraction. Seven new pipeline steps are specified: pre-filter gate, message parser, company disambiguator, account graph check, conversation thread check, location reconciliation, and consent gate. The India-specific provider stack from lead-enrichment-architecture (2026-04-30) is superseded by the global registry approach. **Section 14 (added 2026-05-03)** defines the exact Meta integration connection point: NormalisedChannelEvent schema, two pipeline entry paths (DM at Step 0, Lead Ad at Step 3), Instagram dual role as both channel and Person Resolver enrichment source, and full API call map by step.
+
+**Meta integration connection strategy is now fully specified (2026-05-03).** [[analyses/meta-integration-implementation]] now covers all three Meta surfaces. Facebook Page connection: standard OAuth 2.0 redirect, short-lived → long-lived → non-expiring Page token chain, one `subscribed_apps` call per page at connection time, no refresh job needed. Instagram Business connection: separate OAuth endpoint (`api.instagram.com/oauth/authorize`), Instagram Login path only (old Facebook Login scopes deprecated January 27, 2025), 60-day token with mandatory daily refresh job, webhook configured once at App Dashboard level covering all accounts. WhatsApp: unchanged Embedded Signup flow. Key architectural clarification: Meta delivers all webhooks to a single app-level URL; multi-tenant routing is handled internally using `object` type + `entry[].id` / `phone_number_id` → `channel_connection` lookup.
 
 **What's deferred:** The Adaptive Signal Lifecycle (Add-ons 6/7/8) — requires 2-3 months of real production data.
 
