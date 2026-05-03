@@ -4,6 +4,24 @@
 
 ---
 
+## [2026-05-03] schema-update | orchestration-layer-spec — 6 problems fixed, 3 cross-references added
+
+- File updated: wiki/analyses/orchestration-layer-spec.md
+- Problems fixed:
+  1. CRITICAL — `"model": "gpt-4o"` → `"model": "claude-sonnet-4-6"` in Scoring Agent output schema (Section 4.3)
+  2. IMPORTANT — "One LLM call per lead" principle updated: Sonnet (Scoring Agent, all paths) + Haiku (Message Parser, DM path only); revised in Section 2 table footnote, Stage 2 explanation, Stage 4 intro, and Section 11 Confirmed Decisions
+  3. IMPORTANT — `sub_scores` fixed: removed ghost field `recency` (no matching dimension), added `behavioral` and `context`; now five fields matching five dimensions exactly; soft-open decision in Section 10 closed as RESOLVED
+  4. IMPORTANT — PersonaObject `scoring_weights` field names corrected: `{fit, intent, engagement, recency}` → `{fit, intent, engagement, behavioral, context}` (Section 9)
+  5. INTERNAL CONTRADICTION — `"stage": "bucketed"` removed from Section 7.2 tool invocation envelope; `bucketed` is not a valid pipeline_stage value; enum is now `enriched | normalised | scored`
+  6. IMPORTANT — `awaiting_clarification` added to pipeline_stage transitions (Section 8.1); concurrency guard (8.3) updated to skip this state explicitly; crash recovery query (8.4) updated to exclude it; pipeline_stage RESOLVED row updated in Section 9; Section 11 Confirmed Decisions entry updated
+- Cross-reference gaps added:
+  - Section 4.1: Two pipeline entry points (DM at Step 0, Lead Ad at Step 3) → link to global-data-collection-architecture Section 14
+  - Stage 2: Consent Gate sub-step added (DPDP + GDPR check before external enrichment) → link to global-data-collection-architecture Section 10
+  - Section 7.3: Enrichment API fallback chain vs orchestrator retry clarification added → links to lead-enrichment-architecture and global-data-collection-architecture Section 7
+- Frontmatter: added last_updated: 2026-05-03; updated status line
+
+---
+
 ## [2026-05-03] analysis | Meta Integration — Facebook + Instagram Connection Strategies + Pipeline Connection Point
 
 - Files updated:
