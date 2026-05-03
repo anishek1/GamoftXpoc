@@ -63,11 +63,14 @@ Three execution types. Every workflow step maps to exactly one.
 | # | Step | Execution Type | Notes |
 |---|---|---|---|
 | P1-1 | Data Gather | AUTOMATION | Parallel channel connector calls, deduplication, rate limiting |
+| P1-1b | Pre-Filter Gate (DM path only) | AUTOMATION | Drops spam/noise events before parsing; DM events only; Lead Ad events skip this entirely |
+| P1-1c | Message Parser (DM path only) | AGENT | Haiku LLM; multilingual + typo-tolerant extraction of structured fields from raw DM text; Lead Ad events skip this |
 | P1-2a | Lead Enrichment — Data Collection | AUTOMATION | CRM lookup, web/social data, chat transcripts, past orders; internal sources before external |
 | P1-2b | Lead Enrichment — Signal Extraction | AUTOMATION | Deterministic evaluation of detection_rules against collected data; no LLM |
 | P1-3 | Normalise | AUTOMATION | Schema transform, E.164 phones, ISO-8601 dates, city-tier mapping, data completeness scoring, conflict resolution |
+| P1-3b | Intent Gate | AUTOMATION | Checks intent_specificity + fit_score; very_low intent + HIGH fit → awaiting_clarification (lead paused, clarification sent via originating channel; resumes on reply or scores with intent penalty after 24h) |
 | P1-4 | Prompt Template Fill | AUTOMATION | Mechanical: inserts extracted signal values into template slots; no interpretation |
-| **P1-5** | **Scoring** | **HYBRID** | LLM call (Rating Agent) + banding enforcement (Output Schema Layer); see detail below |
+| **P1-5** | **Scoring** | **HYBRID** | LLM call (Rating Agent, Sonnet) + banding enforcement (Output Schema Layer); see detail below |
 | P1-6 | Disqualification Gate | AUTOMATION | Static business rules: geo cap, role penalty, spam/student force-zero |
 | P1-7 | Bucketize | AUTOMATION | Threshold comparison: score ≥ 80 → HOT, ≥ 55 → WARM, < 55 → COLD |
 | P1-8 | Lead Completeness Routing | AUTOMATION | Reads `needs_review` flag set by Output Schema Layer; routes to human_review queue if true |
@@ -240,6 +243,33 @@ Fetches all new leads from every channel the tenant has connected. All channels 
 
 ---
 
+#### P1-1b — Pre-Filter Gate `AUTOMATION` *(DM path only)*
+
+Applies before any parsing or enrichment on DM events (WhatsApp, Facebook Messenger, Instagram DM). Drops events that are clearly not leads: automated bot messages, delivery receipts, re-join notifications, obvious spam patterns. Lead Ad events never reach this step — they bypass Steps 0–2 entirely and enter the pipeline at the Lead Enrichment stage.
+
+**Why AUTOMATION:** Rule-based matching on message metadata and content patterns (e.g., empty body, known bot sender IDs, message type flags). No judgment required.
+
+---
+
+#### P1-1c — Message Parser `AGENT` *(DM path only)*
+
+**Input:** Raw DM text (WhatsApp, Facebook, Instagram) — often multilingual, colloquial, abbreviated  
+**Output:** Structured extracted fields (name, phone, product interest, language, intent signals)
+
+Uses a Haiku LLM call to parse unstructured conversational text into structured fields. This is the second LLM call in the system (after the three Pipeline 2 agents) and the first per-lead LLM call on the DM path.
+
+**Why AGENT:** Raw DM text is unstructured and language-agnostic. A B2C customer might write in Hindi, Hinglish, or Tamil. A B2B prospect might send a one-line message ("interested in your services"). Rule-based parsing fails on the diversity of real conversational messages. LLM extraction is required.
+
+**Why Haiku, not Sonnet:** The task is extraction, not reasoning. Haiku is sufficient for structured field extraction from short messages and is significantly cheaper than Sonnet. The Scoring Agent (P1-5) handles the reasoning.
+
+**Why this step is AGENT and not HYBRID:** Haiku's output is used as-is for downstream signal extraction. There is no deterministic component that overrides or constrains Haiku's extracted fields within the same call. If extraction quality is poor, the signal extraction in P1-2b will produce weak signal values, which the Scoring Agent will reflect in a lower score or `needs_review` flag.
+
+**Lead Ad events skip this step entirely.** Lead Ad form submissions are already structured JSON — no parsing required. They enter at Lead Enrichment (P1-2a).
+
+Full detail: [[analyses/global-data-collection-architecture]] Section 5.
+
+---
+
 #### P1-2a — Lead Enrichment: Data Collection `AUTOMATION`
 
 Gathers additional information about each lead from available sources:
@@ -291,6 +321,28 @@ Also assigns a **data completeness score** (0–100%) based on how many expected
 
 ---
 
+#### P1-3b — Intent Gate `AUTOMATION`
+
+**Input:** Normalised lead data (from P1-3) — specifically `intent_specificity` and `fit_score`  
+**Output:** Proceed to P1-4 (pass), OR set `pipeline_stage = 'awaiting_clarification'` (pause)
+
+The Intent Gate fires when two conditions are simultaneously true: `intent_specificity = very_low` AND `fit_score = HIGH`. This pattern means the lead is a strong ICP match but sent a message too vague to score intent reliably — worth asking for clarification rather than scoring on weak intent signals.
+
+**When paused:**
+1. Orchestrator sets `pipeline_stage = 'awaiting_clarification'` on the lead
+2. A clarification prompt is sent to the lead via the originating channel (WhatsApp → WhatsApp, Instagram → Instagram DM, etc.)
+3. Pipeline execution pauses for this lead
+4. On reply: lead re-enters the pipeline at the normalised stage, processed with the clarification answer
+5. If no reply after 24 hours: lead proceeds to scoring with an intent penalty applied to its intent-dimension signals
+
+**Why AUTOMATION:** The gate condition is a deterministic rule on two computed fields. The routing decision (pause vs. pass) requires no judgment — it is a threshold check.
+
+**Relationship to awaiting_clarification pipeline_stage:** This is the only step that sets `pipeline_stage = 'awaiting_clarification'`. The concurrency guard (Section 8.3 of orchestration-layer-spec) explicitly excludes `awaiting_clarification` leads from crash recovery — they are intentionally paused, not stalled.
+
+Full detail: [[analyses/global-data-collection-architecture]] Section 9.
+
+---
+
 #### P1-4 — Prompt Template Fill `AUTOMATION`
 
 Inserts the signal values extracted in P1-2b into the template slots from P2-5:
@@ -319,12 +371,12 @@ Makes exactly one logical LLM call. The filled prompt from P1-4 is passed with t
   "bucket": "hot",
   "reasoning": "Strong ICP fit, explicit pricing + timeline signals, multi-channel active lead",
   "lead_completeness": 0.87,
-  "sub_scores": { "fit": 21, "intent": 22, "engagement": 17, "recency": 15 },
+  "sub_scores": { "fit": 21, "intent": 25, "engagement": 17, "behaviour": 12, "context": 9 },
   "recommended_action": "Call today",
   "needs_review": false,
   "schema_version": "v1.0",
   "prompt_version": "v1.3.0",
-  "model": "gpt-4o"
+  "model": "claude-sonnet-4-6"
 }
 ```
 
@@ -554,7 +606,7 @@ Signal extraction uses `detection_rules` defined by the Signal Agent (AGENT) to 
 |---|---|
 | **Test strategy** | AUTOMATION steps → unit tests (deterministic input/output). AGENT steps → evaluation suites (statistical quality across representative leads). HYBRID steps → both: unit tests for the deterministic component, evaluation for the LLM component |
 | **Debugging** | When a lead gets a wrong bucket: check extracted signal values first (P1-2b — AUTOMATION bug) before checking scoring judgment (P1-5 — LLM/HYBRID issue). Separation makes blame assignment fast. |
-| **Cost attribution** | Only AGENT and HYBRID steps incur LLM costs. Pipeline 2 AGENT steps: 3 LLM calls per tenant onboarding (one-time). Pipeline 1 HYBRID step: 1 LLM call per lead. All other steps: no LLM cost. |
+| **Cost attribution** | Only AGENT and HYBRID steps incur LLM costs. Pipeline 2 AGENT steps: 3 LLM calls per tenant onboarding (one-time). Pipeline 1: 1 Sonnet call per lead (Scoring Agent, all paths) + 1 Haiku call for DM-path leads only (Message Parser, P1-1c). Lead Ad events incur only the Sonnet call. All other steps: no LLM cost. |
 | **Retry policy** | AUTOMATION steps: 1 retry → fail. AGENT steps in Pipeline 2: 1 retry → halt onboarding, alert admin. HYBRID step (Scoring): failure table in orchestration-layer-spec Section 4.3 Stage 4 — up to 2 retries with mode-specific handling. |
 | **Observability** | HYBRID and AGENT steps emit extended observability signals: `prompt_version`, `model`, `tokens_in`, `tokens_out`, `latency_ms`, `schema_validation_result`. AUTOMATION steps emit: `duration_ms`, `status`, `retry_count`. |
 

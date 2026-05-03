@@ -64,6 +64,7 @@ Nothing in the governance layer is in the critical path of a pipeline run. All j
 | Leads processed | Total leads in run | Baseline denominator for all rate metrics |
 | Leads delivered | Reached `delivered` state | Confirms the pipeline is producing usable output |
 | Leads flagged | Routed to `human_review` (lead_completeness < threshold, or scoring_failed) | High flag rate = enrichment is producing thin data for too many leads; needs investigation |
+| Leads in awaiting_clarification | Count of leads paused at Intent Gate per run | High count = many high-fit DM leads are sending vague messages; may indicate a channel or tenant-specific messaging problem |
 | Leads failed | Reached `failed` state after retries exhausted | Persistent failures mean enrichment or LLM infrastructure problems |
 | Source success/failure | Per-channel: success, failure, incomplete_fetch | Identifies which channel is broken without stopping the run |
 | API quota consumed | Per channel per tenant, per run | Prevents quota exhaustion from going unnoticed |
@@ -106,6 +107,7 @@ Alerts trigger notifications to team lead. All thresholds are `[TBD — team inp
 | Score coverage drops | < 80% leads successfully scored in a run | High | More than 20% of leads not reaching a bucket means the pipeline is losing significant volume |
 | Pipeline failure rate | > 5% leads reaching `failed` state | High | Persistent failures indicate a systemic infrastructure problem, not noise |
 | Human review queue | > 20% leads routed to `human_review` in a run | Medium | High flag rate = low Scoring Agent confidence; signals prompt or data quality issue |
+| Awaiting clarification rate | > 15% leads paused at Intent Gate in a run | Low | High rate = many high-fit leads sending vague DMs; monitor for trend but not an immediate alert |
 | HOT lead SLA breach | Any HOT lead uncontacted after 24h | High | HOT leads are the highest-value output; even one breach is a direct business loss |
 | Lead completeness distribution | > 50% leads below 50% completeness in a run | Medium | If enrichment is failing to collect enough data on more than half the leads, the scoring inputs are unreliable — this is a data collection problem, not an LLM problem |
 | All sources fail | Any run where all channels return failure | Critical | Zero leads in = zero leads out; the entire pipeline is blocked |
@@ -285,7 +287,7 @@ Extract:
   signal_version      — which Signal Agent run created the signal definitions used
   prompt_version      — which prompt template was active at scoring time
   fired_signals[]     — which signals were extracted and what values they had
-  dimension_scores{}  — fit / intent / engagement / behavioral / context breakdown
+  dimension_scores{}  — fit / intent / engagement / behaviour / context breakdown
   explanation_reasons[]  — the 3 reasons the Scoring Agent gave for the bucket
   confidence          — how confident the system was at scoring time
 

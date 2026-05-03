@@ -15,7 +15,7 @@ status: COMPLETE
 
 # Rating Agent — Specification
 
-**Role in minimal agent set:** One of two agents in the system. Runs once per lead in Pipeline 1. Receives the tenant's scoring configuration (built by the Persona Agent) and an enriched, normalised lead record with pre-extracted signal values, and returns a validated, typed scoring output. This is the only LLM call per lead.
+**Role in minimal agent set:** One of two agents in the system. Runs once per lead in Pipeline 1 (all paths). Receives the tenant's scoring configuration (built by the Persona Agent) and an enriched, normalised lead record with pre-extracted signal values, and returns a validated, typed scoring output. On the DM path, a second LLM call (Message Parser, Haiku) fires earlier in the pipeline — the Rating Agent is the primary and more expensive call, and runs for every lead regardless of path.
 
 ---
 
@@ -154,7 +154,7 @@ Makes exactly one logical LLM call per lead. Owns everything related to the mode
 
 **Provider-agnostic:** The Prompt Layer and Output Schema Layer do not know which provider served the request. The model is recorded in the output for lineage purposes.
 
-**Open decision:** Primary provider — Groq (speed) vs OpenAI (reliability, caching support), or Groq primary with OpenAI fallback. `[TBD — team decision]`
+**Provider:** Anthropic Claude Sonnet 4.6 (primary). OpenAI GPT-4o via LiteLLM as fallback only. **RESOLVED 2026-05-03** — see [[analyses/tech-stack-research]].
 
 ---
 
@@ -188,17 +188,18 @@ Bucketize (P1-7) is a separate downstream pipeline step that the orchestrator ru
 | `bucket` | string: `hot` \| `warm` \| `cold` | LLM's bucketing judgment, validated and enforced by Output Schema Layer banding rules. |
 | `sub_scores` | object | Per-dimension score breakdown. Always present — never collapsed. Required for AP1, AP2 quality metrics and for salesperson-facing score explanations. |
 
-**sub_scores current schema (from S2 intelligence layer design):**
+**sub_scores schema — RESOLVED 2026-05-03:**
 ```json
 {
   "fit": 21,
-  "intent": 22,
+  "intent": 25,
   "engagement": 17,
-  "recency": 15
+  "behaviour": 12,
+  "context": 9
 }
 ```
 
-**Soft blocker:** S2's design doc defines 4 sub-score fields (fit, intent, engagement, recency) but the system has 5 scoring dimensions (Fit, Intent, Engagement, Behaviour, Context). Whether behavioural and context are separate fields or collapsed into engagement is not yet locked. `[S2 to clarify]`
+**RESOLVED 2026-05-03:** Five fields matching the five scoring dimensions: `fit`, `intent`, `engagement`, `behaviour`, `context`. The former `recency` field was a provisional placeholder — it does not correspond to any of the five dimensions and is removed. All five keys must always be present; a value of zero means no signal fired in that dimension.
 
 **Why sub_scores must never be collapsed:** A lead that scores high on Intent but low on Fit requires completely different action than the reverse. The dimension breakdown is what makes the score actionable — without it, the salesperson receives a number with no explanation. All quality metrics that depend on scoring attribution (AP1, AP2, the feedback loop attribution step) require the full sub_scores object.
 
@@ -248,15 +249,16 @@ See [[concepts/confidence-first-class]] for full correction history.
   "lead_completeness": 0.87,
   "sub_scores": {
     "fit": 21,
-    "intent": 22,
+    "intent": 25,
     "engagement": 17,
-    "recency": 15
+    "behaviour": 12,
+    "context": 9
   },
   "recommended_action": "Call today — high intent, strong fit",
   "needs_review": false,
   "schema_version": "v1.0",
   "prompt_version": "v1.3.0",
-  "model": "gpt-4o"
+  "model": "claude-sonnet-4-6"
 }
 ```
 
@@ -289,7 +291,7 @@ A ScoringFailure causes the orchestrator to route the lead to `pipeline_stage = 
 
 ### Per-Tenant Concurrency Cap
 
-The Rating Agent is the only LLM call per lead — and LLM calls are the most expensive and rate-limited resource in the system. The concurrency cap must be per-tenant, not global.
+The Rating Agent (Sonnet) is the primary LLM call per lead and runs for every lead on both paths. On the DM path, a second cheaper Haiku call (Message Parser) fires earlier in the pipeline. LLM calls are the most expensive and rate-limited resource in the system. The concurrency cap must be per-tenant, not global.
 
 **Why per-tenant, not global:** A global cap of 5 allows one tenant's batch to fill all 5 slots, starving all other tenants. A per-tenant cap of 2 ensures that no single tenant can monopolize the LLM resource, regardless of batch size.
 
@@ -383,10 +385,10 @@ LLM cost metering at the per-call level is required for tenant-level cost attrib
 
 | Decision | Status |
 |---|---|
-| Primary LLM provider (Groq vs OpenAI, or fallback chain) | `[TBD — team decision]` |
+| Primary LLM provider | **RESOLVED 2026-05-03** — Anthropic Claude Sonnet 4.6 (primary); OpenAI GPT-4o via LiteLLM as fallback only. See [[analyses/tech-stack-research]]. |
 | Model config scope: global vs per-tenant override | `[TBD — team decision]` |
 | Prompt storage: in code (git-versioned) vs data layer (editable without deployment) | `[TBD — team decision]` |
-| sub_scores field list: 4 fields (current S2 spec) vs 5 fields (matching 5 dimensions) | `[Soft open — S2 to clarify]` |
+| sub_scores field list | **RESOLVED 2026-05-03** — 5 fields: `fit`, `intent`, `engagement`, `behaviour`, `context`. `recency` removed (not a dimension). |
 | needs_review threshold: 0.6 (lenient) or 0.75 (conservative) | `[TBD — team decision after Month 1]` |
 | Per-tenant concurrency cap starting value | Recommend 2 per tenant; `[team decision based on provider rate limits]` |
 | Bucket disagreement logging: log only vs surface as dashboard alert | `[TBD — team decision]` |

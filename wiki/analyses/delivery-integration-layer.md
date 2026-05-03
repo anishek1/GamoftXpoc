@@ -163,6 +163,22 @@ The review card shows which reason applied, so the salesperson (or team lead) kn
 
 ---
 
+### 3.5 Awaiting Clarification in Chat
+
+Leads in `pipeline_stage = 'awaiting_clarification'` appear in a distinct holding section in the chat interface — separate from the main ranked lead list and separate from the human review queue.
+
+**What this means:** The Intent Gate fired (very low intent + high fit) and the system sent a clarification prompt to the lead via their originating channel (WhatsApp → WhatsApp, Instagram DM → Instagram DM). The lead is paused. No score has been assigned yet.
+
+**Salesperson restriction — CRITICAL:** A salesperson **cannot** manually send a message to a lead in `awaiting_clarification` state. The chat interface blocks outbound messaging for these leads. This is intentional: the lead has already received a system-generated clarification request. If the salesperson also reaches out independently, the lead receives two simultaneous messages from "the business" with different framings, which is confusing and damages trust. The restriction lifts automatically when the lead replies (resuming to scored state) or when the 24-hour timeout expires and the lead is scored with an intent penalty.
+
+The chat card for an `awaiting_clarification` lead shows:
+- Lead name, channel, timestamp of original message
+- The clarification question that was sent
+- Time remaining until 24h timeout
+- Status: "Waiting for reply" (no score card, no bucket)
+
+---
+
 ## 4. Notifications
 
 ### 4.1 What Triggers a Notification
@@ -315,6 +331,7 @@ When a lead is delivered (pipeline_stage = 'delivered'), the Delivery Layer can 
 | WARM | Immediate push on delivery | Still time-sensitive within 2–3 day window |
 | COLD | `[TBD — immediate vs. batched daily]` | Lower urgency; batching may be more efficient depending on volume |
 | human_review | Not pushed until resolved | Pushing unreviewed leads to CRM creates noise — wait for human to confirm bucket |
+| awaiting_clarification | Not pushed | Lead is paused awaiting clarification reply; pipeline has not completed; no score to push |
 | failed | Not pushed | Failed leads have no reliable score to push |
 
 ### 6.3 Sync Direction

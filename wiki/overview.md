@@ -14,7 +14,7 @@ Pre-planning and architecture documentation for the **Multi-Tenant Adaptive Lead
 
 ## Current Thesis / Best Understanding
 
-The system runs **two pipelines** from one orchestrator. Pipeline 2 (Onboarding) runs once per tenant to produce intelligence configuration: a business persona, an ideal customer profile, and a set of signal definitions. Pipeline 1 (Event/Lead) runs per lead — it gathers data, extracts signal values deterministically, and passes them to the Scoring Agent via a fill-in-the-blanks prompt template. The Scoring Agent is the only LLM call per lead, keeping per-lead cost predictable.
+The system runs **two pipelines** from one orchestrator. Pipeline 2 (Onboarding) runs once per tenant to produce intelligence configuration: a business persona, an ideal customer profile, and a set of signal definitions. Pipeline 1 (Event/Lead) runs per lead — it gathers data, extracts signal values deterministically, and passes them to the Scoring Agent via a fill-in-the-blanks prompt template. The Scoring Agent (Sonnet) runs for every lead on all paths. On the DM path (WhatsApp, FB/IG DM), a second lighter LLM call — the Message Parser (Haiku) — fires earlier in the pipeline to extract structured fields from raw conversational text. Lead Ad events skip the Message Parser entirely.
 
 The product vision is unchanged: **salespeople never leave the chat interface.** They ask natural questions, get ranked lead cards with scores, confidence levels, and plain-language explanations. All agents, signals, and schemas are invisible to the user.
 
@@ -40,7 +40,7 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 - **[[concepts/intelligence-layer]]** — four-component internal pipeline (Persona Engine → Prompt Layer → Rating Agent → Output Schema Layer); single `score_lead()` entry point; 60-second hard timeout; never writes to data layer directly
 - **[[concepts/signal-types]]** — five scoring dimensions (Fit 25%, Intent 25%, Engagement 20%, Behaviour 20%, Context 10%); defaults overridden per tenant via persona; both data model (`signal`, `signal_evaluation`) and prompt structure
 - **[[concepts/data-entity-model]]** — 32 entities in 3 groups: core lead lifecycle (15), governance & quality (6), operational observability & delivery (11)
-- **[[concepts/agent-vs-tool-classification]]** — 4 LLM agents (3 in Pipeline 2, 1 in Pipeline 1); 1 LLM call per lead preserved
+- **[[concepts/agent-vs-tool-classification]]** — 5 LLM agents (3 in Pipeline 2, 2 in Pipeline 1: Scoring Agent + Message Parser); updated 2026-05-03
 - **[[concepts/persona-layer]]** — per-tenant rich business profile; produced by Onboarding Agent in Pipeline 2; built and cached by Persona Engine (first component of intelligence layer); versioning confirmed
 - **[[concepts/confidence-first-class]]** — **corrected 2026-04-22**: this is a lead completeness score, not LLM confidence; routing and `needs_review` flag unchanged; threshold `[TBD]`
 - **[[concepts/lineage-log]]** — non-negotiable audit trail; written by orchestrator at every stage, both pipelines; primary data source for all scoring quality metrics; backed by `lineage_record` entity
@@ -73,10 +73,10 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 
 ## Open Questions
 
-1. **Signal detection_rule format:** **RESOLVED 2026-04-28.** Named extractor + params model. 13 extractor types covering all 5 dimensions. Persona Agent emits detection_rules directly (no engineering mapping step). Fully deterministic — preserves 1-LLM-call-per-lead guarantee. See [[analyses/signal-detection-rule-spec]].
+1. **Signal detection_rule format:** **RESOLVED 2026-04-28.** Named extractor + params model. 13 extractor types covering all 5 dimensions. Persona Agent emits detection_rules directly (no engineering mapping step). Fully deterministic — signal extraction incurs no LLM cost. See [[analyses/signal-detection-rule-spec]].
 2. **Pipeline 2 re-run triggers:** Proactive check-in cadence (2-week or monthly?) and feedback-driven flagging threshold (fixed count N = ?) `[TBD — team decision after Month 1]`
 3. **Lead completeness score formula and threshold:** Confirmed it's completeness (not LLM confidence) — see [[analyses/confidence-scoring-brainstorm]]; formula and `needs_review` threshold `[TBD]`
-4. **Technology stack:** Backend language, LLM provider (Groq vs OpenAI — open decision in intelligence layer spec), model config scope (global vs per-tenant), prompt storage (code vs data layer), secrets vault (AWS vs HashiCorp), observability tooling — all `[TBD]`
+4. **Technology stack:** Backend language, model config scope (global vs per-tenant), prompt storage (code vs data layer), secrets vault (AWS vs HashiCorp), observability tooling — `[TBD]`. LLM provider **RESOLVED 2026-05-03**: Anthropic Claude Sonnet 4.6 primary, OpenAI GPT-4o via LiteLLM fallback. See [[analyses/tech-stack-research]].
 5. **Tenant personas:** All three personas `[TBD]` — Govmen profile entirely unknown; Urvee-Organics and Gamoft need signal weight configuration
 6. **Scoring Agent concurrency cap:** Recommend 5 — needs team decision based on LLM provider rate limits
 7. **Concurrency guard timeout threshold:** Recommend 15–30 min — needs team decision balancing false recovery vs slow recovery

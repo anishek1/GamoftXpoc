@@ -43,18 +43,24 @@ Every pipeline starts from the orchestrator. Every tool is called by the orchest
   │   Onboarding            │         │   Lead Processing            │
   │   (once per tenant)     │         │   (every time leads run)     │
   │                         │         │                              │
-  │  Onboarding Agent (LLM) │         │   Data Gather                │
+  │  Onboarding Agent (LLM) │         │   Data Gather (channels)     │
   │          ↓              │         │          ↓                   │
-  │  ICP Agent (LLM)        │────────►│   Lead Enrichment            │
-  │          ↓              │  signal │          ↓                   │
-  │  Signal Agent (LLM)     │  defs + │   Normalise                  │
-  │          ↓              │  prompt │          ↓                   │
-  │  Prompt Template built  │         │   Scoring Agent (LLM)        │
+  │  ICP Agent (LLM)        │────────►│   [DM] Pre-Filter Gate       │
+  │          ↓              │  signal │   [DM] Msg Parser / Haiku    │
+  │  Signal Agent (LLM)     │  defs + │   [Lead Ad] joins at ▼       │
+  │          ↓              │  prompt │   Lead Enrichment            │
+  │  Prompt Template built  │         │   + Consent Gate             │
   └─────────────────────────┘         │          ↓                   │
-          │ lineage                   │   Bucketize                  │
-          │ writes                    └──────────────┬───────────────┘
-          │ (both pipelines)               lineage   │ scored leads
-          └────────────────────────────────writes ───┘
+          │ lineage                   │   Normalise                  │
+          │ writes                    │          ↓                   │
+          │ (both pipelines)          │   Intent Gate                │
+          └──────────────────────────►│   ↓         ↓ await_clarif.  │
+                                      │   Scoring Agent (Sonnet)     │
+                                      │          ↓                   │
+                                      │   Bucketize                  │
+                                      └──────────────┬───────────────┘
+                                           lineage   │ scored leads
+                                           writes ───┘
                                     │
               ┌─────────────────────▼────────────────────────────────┐
               │       DELIVERY AND INTEGRATION LAYER                  │
@@ -195,7 +201,7 @@ Using both the persona and ICP, the Signal Agent creates the full list of signal
 | Fit | ~25% | Industry match, role match, serviceability, company size |
 | Intent | ~30% | Price requests, demo requests, urgency language, timeline stated |
 | Engagement | ~20% | Response speed, revisit count, multi-channel contact |
-| Behavioral | ~15% | Past orders, prior proposals, payment patterns |
+| Behaviour | ~15% | Past orders, prior proposals, payment patterns |
 | Context | ~10% | Location, city tier, seasonality, external triggers |
 
 Weights are per-tenant and configurable. These are illustrative starting points from the playbook.
@@ -205,7 +211,7 @@ Each signal is stored as:
 ```
 {
   signal_id
-  dimension            : fit | intent | engagement | behavioral | context
+  dimension            : fit | intent | engagement | behaviour | context
   name                 : "pricing_request"
   description          : "Lead explicitly asked for pricing or a quote"
   detection_rule       : { type, source_fields, params }  ← see [[analyses/signal-detection-rule-spec]]
@@ -283,7 +289,7 @@ Pipeline 1 runs whenever leads need to be scored. Every lead goes through six st
 
 For interactive triggers: the orchestrator classifies the intent before doing anything. If the intent is ambiguous, it presents 2–3 options to the salesperson and waits. It never guesses.
 
-### 4.2 The Six Stages
+### 4.2 The Pipeline Stages
 
 ```
                        TRIGGER (chat / schedule / webhook)
@@ -291,11 +297,28 @@ For interactive triggers: the orchestrator classifies the intent before doing an
                                       ▼
                     ┌─────────────────────────────────────┐
                     │            DATA GATHER              │
-                    │  Fetch all new leads from all       │
-                    │  connected channels simultaneously  │
-                    │  WhatsApp · Facebook · Instagram    │
+                    │  WhatsApp DMs · FB/IG DMs           │
+                    │  FB Lead Ads · IG Lead Ads          │
                     │  Website forms · LinkedIn · etc.    │
-                    └─────────────────┬───────────────────┘
+                    └───────────────┬─────────────────────┘
+                                    │
+               ┌────────────────────┴────────────────────────┐
+               │ DM events (WhatsApp / FB / IG DM)           │ Lead Ad events
+               ▼                                             │  (already structured)
+    ┌───────────────────────┐                                │
+    │   PRE-FILTER GATE     │                                │
+    │   drop spam / noise   │                                │
+    └──────────┬────────────┘                                │
+               │                                             │
+               ▼                                             │
+    ┌───────────────────────┐                                │
+    │   MESSAGE PARSER      │                                │
+    │   Haiku LLM           │                                │
+    │   multilingual extract│                                │
+    └──────────┬────────────┘                                │
+               │                                             │
+               └──────────────────────┬──────────────────────┘
+                                      │ both paths join at Step 3
                                       │
                           Leads arrive as a batch
                                       │
@@ -304,9 +327,9 @@ For interactive triggers: the orchestrator classifies the intent before doing an
                     │                │                   │
           ┌─────────▼──────┐  ┌──────▼──────┐  ┌────────▼──────┐
           │ LEAD ENRICHMENT│  │LEAD ENRICHMT│  │LEAD ENRICHMT  │
+          │  Consent Gate  │  │ Consent Gate│  │ Consent Gate  │
           │  collect data  │  │ collect data│  │ collect data  │
-          │  extract signal│  │ extract sig │  │ extract sig   │
-          │  values        │  │ values      │  │ values        │
+          │  extract sigs  │  │ extract sigs│  │ extract sigs  │
           └─────────┬──────┘  └──────┬──────┘  └────────┬──────┘
                     │                │                   │
           ┌─────────▼──────┐  ┌──────▼──────┐  ┌────────▼──────┐
@@ -315,8 +338,16 @@ For interactive triggers: the orchestrator classifies the intent before doing an
           └─────────┬──────┘  └──────┬──────┘  └────────┬──────┘
                     │                │                   │
           ┌─────────▼──────┐  ┌──────▼──────┐  ┌────────▼──────┐
+          │  INTENT GATE   │  │ INTENT GATE │  │ INTENT GATE   │
+          │pass↓  pause↗   │  │pass↓ pause↗ │  │pass↓  pause↗  │
+          └─────────┬──────┘  └──────┬──────┘  └────────┬──────┘
+              ↗ await_clarification: lead paused, clarification sent via
+                originating channel; resumes on reply OR scores with
+                intent penalty after 24h — see Section 8.1
+                    │                │                   │
+          ┌─────────▼──────┐  ┌──────▼──────┐  ┌────────▼──────┐
           │ SCORING AGENT  │  │SCORING AGENT│  │ SCORING AGENT │
-          │  (LLM call)    │  │ (LLM call)  │  │  (LLM call)   │
+          │  Sonnet        │  │  Sonnet     │  │  Sonnet       │
           └─────────┬──────┘  └──────┬──────┘  └────────┬──────┘
                     │                │                   │
                     └────────────────┴───────────────────┘
@@ -337,7 +368,7 @@ For interactive triggers: the orchestrator classifies the intent before doing an
                     └─────────────────────────────────────┘
 ```
 
-Each lead is processed in parallel (up to a concurrency cap of `[TBD — recommend 5]` simultaneous Scoring Agent calls).
+Each lead is processed in parallel (up to a concurrency cap of `[TBD — recommend 5]` simultaneous Scoring Agent calls). DM-path leads also have a Message Parser (Haiku) call earlier in the flow; Lead Ad events skip Steps 0–2 and enter at the Lead Enrichment stage.
 
 ### 4.3 Stage Details
 
@@ -461,7 +492,7 @@ S2's intelligence layer design has defined the full output schema. Here it is, w
     "fit": 21,
     "intent": 25,
     "engagement": 17,
-    "behavioral": 12,
+    "behaviour": 12,
     "context": 9
   },
   "recommended_action": "Call today — high intent, strong fit",
@@ -487,7 +518,7 @@ S2's intelligence layer design has defined the full output schema. Here it is, w
 | `prompt_version` | string | Which prompt template was used. Enables attribution in the feedback loop |
 | `model` | string | Which model produced this output |
 
-**sub_scores — resolved 2026-05-03:** Five fields, one per scoring dimension: `fit`, `intent`, `engagement`, `behavioral`, `context`. The earlier four-field schema that listed `recency` as a fourth field was a provisional placeholder — `recency` does not correspond to any of the five defined dimensions and is removed. All five dimension keys must always be present in the returned object. A value of zero means no signal in that dimension fired; it is never omitted.
+**sub_scores — resolved 2026-05-03:** Five fields, one per scoring dimension: `fit`, `intent`, `engagement`, `behaviour`, `context`. The earlier four-field schema that listed `recency` as a fourth field was a provisional placeholder — `recency` does not correspond to any of the five defined dimensions and is removed. All five dimension keys must always be present in the returned object. A value of zero means no signal in that dimension fired; it is never omitted.
 
 Dimension scores are always shown separately — they are never collapsed into one number. A lead that is high on intent but low on fit needs completely different action than the reverse.
 
@@ -1010,7 +1041,7 @@ The orchestrator sits between the data layer (S1) and the intelligence layer (S2
 | `tenant_config` mandatory field list | S1 | **RESOLVED** — mandatory fields are tenant_id, business_type, and the business_profile fields that feed the PersonaObject (icp, scoring_weights, banding, custom_rules, tone). |
 | `signal` entity schema | S1 | **RESOLVED** — confirmed: signal_id, dimension, name, description, detection_rule, weight_within_dim, applicable_to. `signal_evaluation` is the companion entity storing per-lead answers. |
 | `human_review_queue` — is it a separate table? | S1 | **RESOLVED — no separate table.** Human review leads are a filtered view of the `leads` table where `pipeline_stage = 'human_review'`. The `needs_review` flag in the ScoringOutput is what routes a lead there. |
-| Persona object (Onboarding Agent output) | S2 | **RESOLVED** — PersonaObject fields: tenant_id, business_type (B2B/B2C), icp (IcpDefinition), scoring_weights {fit, intent, engagement, behavioral, context}, banding {hot_min, warm_min, cold_max}, custom_rules (list), tone, version. Cached by Persona Engine with 15-min TTL. |
+| Persona object (Onboarding Agent output) | S2 | **RESOLVED** — PersonaObject fields: tenant_id, business_type (B2B/B2C), icp (IcpDefinition), scoring_weights {fit, intent, engagement, behaviour, context}, banding {hot_min, warm_min, cold_max}, custom_rules (list), tone, version. Cached by Persona Engine with 15-min TTL. |
 | ICP object (ICP Agent output) | S2 | **RESOLVED** — ICP output is captured as `icp: IcpDefinition` inside the PersonaObject, and stored separately as the `ideal_customer_profile` entity by S1. Also versioned in `ideal_customer_profile_version`. |
 | Signal Agent output schema | S1 + S2 | **RESOLVED** — Signal Agent outputs `signal` records (one per scoring question). Stored by S1 in the `signal` entity. |
 
@@ -1029,7 +1060,7 @@ Updated 2026-04-22 — items resolved by S1 entity catalog and S2 intelligence l
 | Scoring Agent output schema (incl. completeness field) | S2 | **RESOLVED** — locked by S2 design spec |
 | Onboarding / ICP / Signal Agent output schemas | S2 | **RESOLVED** — PersonaObject, IcpDefinition, and signal entity all defined |
 | Signal `detection_rule` format + evaluation engine | S2 | **RESOLVED 2026-04-28** — see [[analyses/signal-detection-rule-spec]]. |
-| Sub_scores field list | S2 | **RESOLVED 2026-05-03** — five fields matching the five dimensions: `fit`, `intent`, `engagement`, `behavioral`, `context`. The former `recency` field was a provisional placeholder with no corresponding dimension and is removed. |
+| Sub_scores field list | S2 | **RESOLVED 2026-05-03** — five fields matching the five dimensions: `fit`, `intent`, `engagement`, `behaviour`, `context`. The former `recency` field was a provisional placeholder with no corresponding dimension and is removed. |
 | Scoring Agent concurrency cap | Team | Recommend 5; team decision needed |
 | Timeout threshold for concurrency guard | Team | Recommend 15–30 min; team decision needed |
 | Capability registry storage format | Team | YAML / JSON / DB table — team decision |
@@ -1064,7 +1095,7 @@ Updated 2026-04-22 — items resolved by S1 entity catalog and S2 intelligence l
 | pipeline_stage accepted string values locked (see Section 8.1) — `awaiting_clarification` added 2026-05-03 | S1 entity catalog 2026-04-22; global-data-collection-architecture 2026-05-03 |
 | Data store is three entities: pipeline_run, task_execution, lineage_record | S1 entity catalog 2026-04-22 |
 | Scoring Agent output schema locked — `lead_completeness` (not `confidence`) | S2 intelligence layer design 2026-04-22 |
-| sub_scores schema locked — five fields: fit, intent, engagement, behavioral, context; `recency` removed | global-data-collection-architecture 2026-05-03 |
+| sub_scores schema locked — five fields: fit, intent, engagement, behaviour, context; `recency` removed | global-data-collection-architecture 2026-05-03 |
 | No separate human_review_queue table — filtered view of leads | S1 entity catalog 2026-04-22 |
 | PersonaObject structure locked | S2 intelligence layer design 2026-04-22 |
 | Signal + signal_evaluation are formal separate entities | S1 entity catalog 2026-04-22 |

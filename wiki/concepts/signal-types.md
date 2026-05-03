@@ -124,7 +124,7 @@ This means: adding a new scoring signal (e.g. LinkedIn connection depth) require
 
 ## Why It Matters
 
-The five-dimension structure is what makes scores **auditable**. The LLM doesn't return a single number — it returns a breakdown (fit=26, intent=27, engagement=18, recency=15). When a sales rep disputes a score, the sub-score breakdown shows exactly which dimension drove the result, enabling targeted correction (wrong enrichment → fix enrichment; wrong weight → adjust persona).
+The five-dimension structure is what makes scores **auditable**. The LLM doesn't return a single number — it returns a breakdown (fit=21, intent=25, engagement=17, behaviour=12, context=9). When a sales rep disputes a score, the sub-score breakdown shows exactly which dimension drove the result, enabling targeted correction (wrong enrichment → fix enrichment; wrong weight → adjust persona).
 
 ## Tensions & Contradictions
 

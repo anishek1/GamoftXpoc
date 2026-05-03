@@ -75,7 +75,7 @@ The **Persona Engine** is the first component of the [[concepts/intelligence-lay
 **PersonaObject fields (from intelligence layer design spec):**
 ```
 tenant_id, business_type (B2B/B2C), icp (IcpDefinition),
-scoring_weights {fit, intent, engagement, recency},
+scoring_weights {fit, intent, engagement, behaviour, context},
 banding {hot_min, warm_min, cold_max},
 custom_rules (list), tone, version
 ```

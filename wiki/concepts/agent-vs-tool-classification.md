@@ -18,7 +18,7 @@ Every component in the pipeline is explicitly tagged as either **LLM_AGENT** (us
 
 ## Updated Classification — 4 LLM Agents `[TEAM DECISION 2026-04-19]`
 
-The original source doc stated 1 LLM agent. The team has decided on a two-pipeline architecture with 4 LLM agents total. The per-lead cost principle is preserved: Pipeline 1 still uses 1 LLM call per lead. Pipeline 2 agents are one-time per tenant setup.
+The original source doc stated 1 LLM agent. The team has decided on a two-pipeline architecture with 5 LLM agents total (4 original + Message Parser). Pipeline 2 agents are one-time per tenant setup. Per-lead: 1 Sonnet call (Scoring Agent, all paths) + 1 Haiku call (Message Parser, DM path only). Lead Ad events use only the Sonnet call. — Updated 2026-05-03.
 
 ### Pipeline 2 — Onboarding (One-Time Per Tenant)
 
@@ -39,10 +39,13 @@ The original source doc stated 1 LLM agent. The team has decided on a two-pipeli
 | 5 | Signal Definitions Load | TOOL | DB fetch |
 | 6 | Confirmation UX | TOOL | Templated message |
 | 7 | Data Gather (Agent A equiv.) | TOOL | API calls + dedup + rate limits |
+| 7b | Pre-Filter Gate (DM path only) | TOOL | Drops spam/noise before parsing; Lead Ad events skip |
+| **7c** | **Message Parser (DM path only)** | **LLM AGENT** | **Haiku; multilingual + typo-tolerant extraction from raw DM text; Lead Ad events skip** |
 | 8 | Rate Limiter | TOOL | Quota checks |
 | 9 | Deduplicator | TOOL | Matching algorithm |
 | 10 | Lead Enrichment | TOOL | Data addition (CRM, public web) + deterministic signal extraction |
 | 11 | Normaliser | TOOL | Schema transformation + conflict resolution |
+| 11b | Intent Gate | TOOL | Pause/pass check: very_low intent + HIGH fit → awaiting_clarification; all others pass |
 | 12 | Prompt Template Filler | TOOL | Inserts extracted signal values into pre-written template |
 | **13** | **Scoring Agent** | **LLM AGENT** | **Holistic lead judgment using filled prompt template** |
 | 14 | Output Validator | TOOL | Schema check on Scoring Agent output |
@@ -54,19 +57,19 @@ The original source doc stated 1 LLM agent. The team has decided on a two-pipeli
 | 20 | Observability Logger | TOOL | Metrics emission |
 | 21 | Governance Layer | TOOL | Cross-cutting monitoring, auditability, security |
 
-**Total: 4 LLM AGENTS, 21+ TOOLS**
+**Total: 5 LLM AGENTS, 23+ TOOLS** (updated 2026-05-03: +Message Parser)
 
 ## Updated Cost Principle
 
 Original: "1 LLM agent in the entire pipeline" — updated to:
 
-**"1 LLM agent per lead (Scoring Agent in Pipeline 1). Pipeline 2 agents (Onboarding, ICP, Signal) are one-time per tenant setup — their cost is amortised across all leads that tenant ever processes."**
+**"Scoring Agent (Sonnet) runs for every lead on all paths. Message Parser (Haiku) runs on the DM path only — cheaper than Sonnet, skipped entirely for Lead Ad events. Pipeline 2 agents (Onboarding, ICP, Signal) are one-time per tenant setup — their cost is amortised across all leads that tenant ever processes."**
 
 ## Why Signal Extraction Is a TOOL (Not LLM)
 
 Signal definitions from Pipeline 2 are explicit enough (name, description, detection_rule) to be evaluated deterministically against enriched lead data. Keeping extraction as a TOOL means:
 
-- One LLM call per lead (Scoring Agent only) — cost stays predictable
+- Scoring Agent (Sonnet) per lead + Message Parser (Haiku) on DM path only — cost stays predictable and bounded
 - Extraction bugs (wrong signal value) are debuggable separately from scoring bugs (wrong judgment)
 - Consistent, reproducible results across leads
 
@@ -81,7 +84,7 @@ Signal definitions from Pipeline 2 are explicit enough (name, description, detec
 
 ## Tensions & Contradictions
 
-- Original `[LOCKED]` principle of "1 LLM agent" is superseded by team decision on two-pipeline architecture. Updated principle above reflects the new intent: per-lead cost is still 1 LLM call. Pipeline 2 LLM calls are one-time setup.
+- Original `[LOCKED]` principle of "1 LLM agent" is superseded by team decision on two-pipeline architecture + Message Parser addition (2026-05-03). Updated principle: Sonnet call per lead (all paths) + Haiku call on DM path only. Pipeline 2 LLM calls are one-time setup.
 
 ## Related Concepts
 

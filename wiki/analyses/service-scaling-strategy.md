@@ -145,7 +145,7 @@ Three tenants, ~300 leads a day. There is no case for separate infrastructure. O
 This service has two internal parts that should be understood separately, even if they're deployed together at MVP:
 
 - **Orchestration controller:** The stateful brain. It reads `pipeline_stage`, decides what to do next, calls tools in sequence, writes lineage. Deterministic — no LLM.
-- **LLM wrapper / prompt execution:** The `score_lead()` call. Takes the enriched, normalised lead + the tenant's signal definitions, calls the LLM, returns a structured `ScoringOutput`. One LLM call per lead, locked.
+- **LLM wrapper / prompt execution:** The `score_lead()` call. Takes the enriched, normalised lead + the tenant's signal definitions, calls the LLM (Sonnet), returns a structured `ScoringOutput`. Runs for every lead on both the DM path and the Lead Ad path. On the DM path only, a second cheaper Haiku call (Message Parser) fires earlier in the pipeline.
 
 ### The Scaling Recommendation: Pool with Per-Tenant Concurrency Caps
 
@@ -175,7 +175,7 @@ This service has two internal parts that should be understood separately, even i
 
 ### Recommendation 9: Timeout and Fail Loudly [MVP]
 
-**What it means:** The Scoring Agent has a 60-second hard timeout (already locked in the design). If the LLM call doesn't return in 60 seconds, the lead's `pipeline_stage` is set to `scoring_failed`, a lineage record is written with the failure, and the lead is routed to `human_review`.
+**What it means:** The Scoring Agent has a 60-second hard timeout (already locked in the design). If the LLM call doesn't return in 60 seconds, the lead's `pipeline_stage` is set to `human_review` with `reason: scoring_failed`, a lineage record is written with the failure.
 
 **Why:** Without a hard timeout, a slow or hung LLM call holds a concurrency slot indefinitely. With a per-tenant cap of 2, one hung call means that tenant is operating at 50% scoring capacity until someone notices. The 60-second timeout ensures hung calls are released quickly and the failure is visible in the lineage log, which feeds the monitoring alerts. The intelligence layer spec already mandates this — the implementation must enforce it.
 
@@ -251,7 +251,7 @@ Every recommendation above has been checked against the locked design decisions 
 
 | Locked constraint | How the scaling strategy respects it |
 |---|---|
-| 1 LLM call per lead (Scoring Agent only) | Per-tenant concurrency cap applies only to the Scoring Agent. All other stages are deterministic tools — no LLM, no rate limit risk. |
+| LLM calls per lead | Per-tenant concurrency cap applies to the Scoring Agent (Sonnet, all paths). On the DM path, a second Haiku call (Message Parser) also fires at lower cost. All other stages are deterministic — no LLM, no rate limit risk. |
 | Governance failure must never halt pipelines | All metering, cost logging, and usage tracking run as fire-and-forget events. If the metering write fails, Pipeline 1 continues. |
 | Delivery failures never roll back Pipeline 1 | The score is persisted to `leads` before delivery is attempted. Scaling the reporting service does not touch this guarantee. |
 | System proposes / human approves on config changes | Tiering limit changes and concurrency cap changes require team lead or admin approval. The per-tenant config record is the surface where these are applied. |
@@ -289,14 +289,14 @@ The long-term commercial model is a bridge architecture: all current tenants in 
 
 ## Caveats & Gaps
 
-- **LLM provider choice is TBD** — the specific rate limit numbers depend on which provider is selected (Groq vs OpenAI). Per-tenant limits should be set relative to the provider's account-level limits.
+- **LLM provider — RESOLVED 2026-05-03** — Anthropic Claude Sonnet 4.6 (primary), OpenAI GPT-4o via LiteLLM (fallback). Per-tenant concurrency limits should be calibrated against Anthropic's account-level rate limits.
 - **Backend language is TBD** — queue technology (Celery, BullMQ, etc.) depends on this choice.
 - **Signal detection_rule format — RESOLVED 2026-04-28.** Named extractor + params model. Enrichment code can now be written. Scaling design for the enrichment service is unaffected. See [[analyses/signal-detection-rule-spec]].
 - **Alert thresholds for all monitoring** — all to be set after Month 1 baseline. The monitoring infrastructure should be wired from day one; the thresholds get filled in later.
 
 ## Follow-up Questions
 
-- Which LLM provider is selected? This determines the token budget defaults and rate limit numbers in the tiering table.
+- LLM provider is resolved (Anthropic Claude). Token budget defaults and tiering rate limit numbers should now be calibrated against Anthropic's account limits.
 - What is the backend language? This determines the queue technology for Recommendations 1 and 3.
 - Should the per-tenant concurrency cap be configurable per-tenant from day one, or start as a hardcoded default (2) with a config override path ready?
 - Is there a timeline for when the first paying (non-POC) tenant is expected? That determines urgency of the bridge model readiness.

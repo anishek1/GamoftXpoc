@@ -4,6 +4,75 @@
 
 ---
 
+## [2026-05-04] schema-update | Cross-wiki consistency pass — 12 documents corrected
+
+- Trigger: comprehensive audit against global-data-collection-architecture (2026-05-03), meta-integration-implementation (2026-05-03), and tech-stack-research (2026-04-26) as ground-truth sources
+- Files updated (12):
+
+**wiki/analyses/orchestration-layer-spec.md**
+  - Section 2 diagram: Pipeline 1 column redrawn — added Pre-Filter Gate, Message Parser/Haiku, Lead Ad skip note, Consent Gate, Intent Gate, await_clarification branch
+  - Section 4.2 diagram: Renamed "The Six Stages" → "The Pipeline Stages"; full diagram redrawn showing two-path entry, per-lead parallel flow with Intent Gate and await_clarification branch
+  - "behavioral" → "behaviour" fixed in 7 locations (dimension table, signal schema, sub_scores JSON, resolved note, Section 9 PersonaObject, Section 10 resolved row, Section 11 confirmed decision)
+
+**wiki/analyses/execution-type-classification.md**
+  - sub_scores example: `{fit:21, intent:22, engagement:17, recency:15}` → `{fit:21, intent:25, engagement:17, behaviour:12, context:9}`
+  - `"model": "gpt-4o"` → `"model": "claude-sonnet-4-6"`
+  - Summary table: added P1-1b (Pre-Filter Gate, AUTOMATION), P1-1c (Message Parser, AGENT), P1-3b (Intent Gate, AUTOMATION)
+  - Detailed breakdown: added full specification sections for P1-1b, P1-1c, P1-3b
+  - Cost attribution row: updated to reflect Sonnet (all paths) + Haiku (DM path only)
+
+**wiki/analyses/rating-agent-spec.md**
+  - Role description: "only LLM call per lead" → DM path caveat added
+  - Provider: Groq/OpenAI [TBD] → RESOLVED: Anthropic Claude Sonnet 4.6 primary
+  - sub_scores in Outputs section: recency removed, behaviour+context added; Soft blocker → RESOLVED 2026-05-03
+  - Full ScoringOutput schema: same sub_scores fix + model field corrected
+  - Per-Tenant Concurrency section: "only LLM call per lead" revised
+  - Open Decisions table: LLM provider → RESOLVED; sub_scores → RESOLVED
+
+**wiki/analyses/service-scaling-strategy.md**
+  - CRITICAL: `pipeline_stage = 'scoring_failed'` → `pipeline_stage = 'human_review'` with `reason: scoring_failed`
+  - "One LLM call per lead, locked" → Sonnet all paths + Haiku DM path description
+  - Locked constraints table: "1 LLM call per lead" row updated
+  - LLM provider Groq/OpenAI → RESOLVED to Anthropic Claude Sonnet 4.6
+
+**wiki/analyses/delivery-integration-layer.md**
+  - Added Section 3.5: Awaiting Clarification in Chat — holding section for paused leads, salesperson restriction (cannot message), card content, timeout behavior
+  - CRM sync table: added `awaiting_clarification` row (not pushed, pipeline not completed)
+
+**wiki/analyses/governance-observability-layer.md**
+  - Monitoring metrics table: added "Leads in awaiting_clarification" row
+  - Alert thresholds table: added "Awaiting clarification rate" row
+  - `behavioral` → `behaviour` in attribution job extract block
+
+**wiki/concepts/agent-vs-tool-classification.md**
+  - Agent count: 4 → 5 (added Message Parser)
+  - Pipeline 1 table: added Pre-Filter Gate, Message Parser (LLM AGENT), Intent Gate
+  - Cost principle: "1 LLM call per lead" → Sonnet + Haiku description
+  - Tensions section: updated "1 LLM call" language
+
+**wiki/concepts/intelligence-layer.md**
+  - sub_scores schema: recency → behaviour + context (5 fields)
+  - Provider open decision: Groq/OpenAI → RESOLVED to Anthropic Claude Sonnet 4.6
+  - Design principle 1: "Single LLM call per lead" → Message Parser context added
+  - Open Decisions table row 1: RESOLVED
+
+**wiki/concepts/persona-layer.md**
+  - scoring_weights: `{fit, intent, engagement, recency}` → `{fit, intent, engagement, behaviour, context}`
+
+**wiki/concepts/signal-types.md**
+  - Example sub-score breakdown: `(fit=26, intent=27, engagement=18, recency=15)` → `(fit=21, intent=25, engagement=17, behaviour=12, context=9)`
+
+**wiki/overview.md**
+  - Current Thesis: "Scoring Agent is the only LLM call per lead" → DM path / Lead Ad path distinction added
+  - Major Themes: agent count 4 → 5, "1 LLM call per lead" → updated
+  - Open Questions item 4: "Groq vs OpenAI — open" → RESOLVED to Anthropic Claude; signal extraction note updated
+  - signal detection_rule note: "preserves 1-LLM-call guarantee" → "signal extraction incurs no LLM cost"
+
+**wiki/analyses/future-optional-agents.md**
+  - "Must stay deterministic for cost control (1 LLM call per lead)" → updated with Message Parser context
+
+---
+
 ## [2026-05-03] schema-update | orchestration-layer-spec — 6 problems fixed, 3 cross-references added
 
 - File updated: wiki/analyses/orchestration-layer-spec.md

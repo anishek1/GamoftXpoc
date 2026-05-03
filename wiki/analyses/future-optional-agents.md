@@ -207,7 +207,7 @@ Not every enhancement requires an LLM agent. These capabilities should remain AU
 | Capability | Why it should stay AUTOMATION |
 |---|---|
 | Lead deduplication | Deterministic matching rules (phone → email → name+location) are correct and debuggable. LLM deduplication introduces non-reproducible results. |
-| Signal extraction from lead data | Must stay deterministic for cost control (1 LLM call per lead) and debuggability. An "enrichment agent" that uses LLM for extraction would break the fundamental architecture. |
+| Signal extraction from lead data | Must stay deterministic for cost control and debuggability. The Message Parser (Haiku, DM path) handles raw text extraction — all structured signal evaluation stays deterministic. An "enrichment agent" that uses LLM for signal extraction would break the fundamental architecture. |
 | Bucket threshold enforcement | Tenant-configured numbers. Rule application is deterministic. Adding LLM judgment to "should this lead be HOT?" contradicts the structured scoring purpose of the Rating Agent. |
 | Disqualification rule application | Explicit per-tenant business rules. LLM application adds cost and inconsistency without benefit. |
 | Quality metrics computation | SQL aggregations against defined fields. Deterministic by design — the metrics must be reproducible for the feedback loop to be credible. |
