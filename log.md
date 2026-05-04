@@ -4,6 +4,16 @@
 
 ---
 
+## [2026-05-04] analysis | Prompt Template Framework
+
+- File: wiki/analyses/prompt-template-framework.md
+- Question: Standard prompt template framework for all LLM interactions in the Lead Intelligence Engine
+- Tags: prompt-engineering, llm, rating-agent, persona-agent, b2b, sme, scoring
+- Sources consulted: orchestration-layer-spec, rating-agent-spec, persona-agent-spec, global-data-collection-architecture
+- Notes: Defines four-section model (SYSTEM/CONTEXT/TASK/OUTPUT FORMAT); explains static/variable boundary for Anthropic prefix caching; documents three prompt variants (new/returning/rescore); covers all 5 LLM call types in framework coverage table; includes two full runnable samples — B2B enterprise (Rohan Mehta, CTO, TechSolve India, 120 employees, completeness 0.87, expected score 86 HOT) and SME fragmented (unknown contact, "hi interested in your product", completeness 0.52, expected score 21 COLD); clarifies which output fields the LLM writes vs which the Output Schema Layer adds post-call
+
+---
+
 ## [2026-05-04] schema-update | Cross-wiki consistency pass — 12 documents corrected
 
 - Trigger: comprehensive audit against global-data-collection-architecture (2026-05-03), meta-integration-implementation (2026-05-03), and tech-stack-research (2026-04-26) as ground-truth sources
