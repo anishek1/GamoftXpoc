@@ -4,6 +4,21 @@
 
 ---
 
+## [2026-05-05] analysis | LLM Operational Safeguards
+
+- File: wiki/analyses/llm-operational-safeguards.md
+- Question: Production-ready retry, fallback, caching, token monitoring, and cost control safeguards for the LLM system
+- Tags: llm, reliability, retry, fallback, caching, token-monitoring, cost-control, rating-agent, pipeline-1
+- Sources consulted: rating-agent-spec, llm-io-contract, service-scaling-strategy, tech-stack-research, orchestration-layer-spec
+- Four corrections applied over prior draft:
+  - Rate limit retry logic: if Retry-After > 25s, skip retry entirely and return ScoringFailure(rate_limit_exhausted); do not waste retry on a call that will be rate-limited again
+  - LiteLLM fallback description: re-route happens within Attempt 1 based on error response (not a proactive health check); retry counter does not increment for provider-level re-route
+  - Provider pricing: must be read from a provider_pricing_config table at call time, not hardcoded; store both raw token counts and cost_usd for auditability
+  - Auth failure (401/403): fires admin alert immediately — this is a production incident, not a per-lead failure
+- Open gaps flagged: re-queue mechanism for rate_limit_exhausted, tokenizer library choice (tiktoken vs Anthropic SDK), provider_pricing_config entity missing from data model, anomaly threshold calibration
+
+---
+
 ## [2026-05-05] analysis | LLM I/O Contract — Rating Agent
 
 - File: wiki/analyses/llm-io-contract.md
