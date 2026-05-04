@@ -4,6 +4,22 @@
 
 ---
 
+## [2026-05-05] analysis | LLM I/O Contract — Rating Agent
+
+- File: wiki/analyses/llm-io-contract.md
+- Question: Strict, machine-consumable LLM input/output JSON contracts for the Rating Agent
+- Tags: rating-agent, scoring, schema, validation, json-contract, pipeline-1
+- Sources consulted: rating-agent-spec, prompt-template-framework, signal-types, intelligence-layer, confidence-first-class, orchestration-layer-spec
+- Design hardening applied:
+  - `reasoning` promoted from freeform string to structured object (primary_driver, signal_contributors, data_gaps, salesperson_note)
+  - `recommended_action` promoted from freeform string to 7-value enum (call_immediately, schedule_demo, send_pricing_deck, follow_up_scheduled, send_qualifying_message, nurture, archive)
+  - Signal values typed as discriminated unions per signal class (BooleanSignal, BooleanOrPartialSignal, SpeedSignal, etc.) — eliminates false/null/not_detected ambiguity
+  - `confidence` term from task resolved to `lead_completeness` per vault RESOLVED 2026-04-22
+- Contracts delivered: INPUT_SCHEMA (JSON Schema draft-2020-12), OUTPUT_SCHEMA (7 LLM fields), VALIDATION_RULES (cross-field, retry, fallback, Output Schema Layer augmentation)
+- Breaking changes flagged: prompt template OUTPUT FORMAT section must be updated to match structured reasoning and enum recommended_action
+
+---
+
 ## [2026-05-04] analysis | Prompt Template Framework
 
 - File: wiki/analyses/prompt-template-framework.md
