@@ -4,6 +4,67 @@
 
 ---
 
+## [2026-05-05] analysis | Onboarding Flow — Completion Criteria (Subtask 3 of 3)
+
+- File: wiki/analyses/onboarding-flow-readiness.md
+- Question: What are the exact conditions for onboarding completion and Pipeline 1 activation?
+- Tags: onboarding, pipeline-1, pipeline-2, tenant-setup, readiness-check, consent, activation
+- Sources consulted: persona-agent-spec, orchestration-layer-spec, channel-integration-layer, onboarding-flow-stage-map, lead-pipeline-architecture, core-business-entities
+- Notes:
+  - Two conditions required simultaneously: (1) Pipeline 2 fully completed (PersonaObject + IcpDefinition + signal definitions + prompt template all persisted); (2) ≥1 channel_connection.status = active
+  - consent_preference: RESOLVED — not a Stage 5 condition; per-lead record; enforcement point is Pipeline 1 Consent Gate; no records exist at activation time; condition cannot fail → not a condition
+  - tenant.status state machine: onboarding (Stage 2) → active (Stage 5 pass); one-way; stays active if connectors go inactive after activation
+  - Activation effects in order: (1) tenant.status = active (atomic CAS write) → (2) queue drain FIFO by arrival_at → (3) Pipeline 1 enabled → (4) user notification
+  - Pipeline 2 re-run after activation: tenant.status unaffected; Persona Engine 15-min TTL cache invalidates on new PersonaObject; no Pipeline 1 disruption
+  - Stage 5 vs Pipeline 1 pre-flight check: explicitly distinguished with comparison table; pre-flight is per-run, does not check connectors
+  - Named inconsistency: orchestration-layer-spec §6.1 step 7 and §6.2 use tenant.onboarding_complete; canonical is tenant.status = active; both flagged for update
+  - Edge cases documented: race condition (atomic CAS), all connectors inactive post-activation, abandoned onboarding (no timeout defined — gap flagged), Meta pending_review auto-trigger gap
+
+---
+
+## [2026-05-05] analysis | Onboarding Flow — Required Inputs (Subtask 2 of 3)
+
+- File: wiki/analyses/onboarding-flow-inputs.md
+- Question: What are the required inputs for each onboarding stage — field names, types, validation rules, sources?
+- Tags: onboarding, pipeline-2, tenant-setup, connector-setup, inputs, validation, form-fields
+- Sources consulted: persona-agent-spec, channel-integration-layer, execution-type-classification, meta-integration-implementation, persona-layer, orchestration-layer-spec, core-business-entities
+- Notes:
+  - Stage 1: 4 user fields (email, password, full_name, tos_accepted) + 1 system gate (email_verified)
+  - Stage 2: 2 user fields (organization_name, organization_slug auto-generated) + system-generated tenant_id, tenant.status=onboarding, admin role
+  - Stage 3: 6 user fields (business_type, industry, business_description, target_audience, geography_focus, negative_profiles); target_audience label adapts per business_type; P2-1 HYBRID step: LLM strengthens business_description before Persona Agent queued, shown for user confirmation; explicit NOT-collected table covers all 11 LLM-inferred PersonaObject/IcpDefinition fields
+  - Stage 4: No form inputs; OAuth flows only; conditional page/account selection post-OAuth for Facebook (>1 page) and Instagram (>1 account); WhatsApp phone number is read-only display; Instagram uses Login path (api.instagram.com), not deprecated Facebook Login; Website connector = JS snippet external install, no UI input
+  - Stage 5: No user inputs; system-only pre-flight check
+  - consent_preference: not a form input; deferred to Subtask 3 (onboarding-flow-readiness)
+
+---
+
+## [2026-05-05] correction | Onboarding Flow — Stage Map v2 (4 issues fixed)
+
+- File: wiki/analyses/onboarding-flow-stage-map.md
+- Corrections applied after advisor review:
+  1. Event gap window: webhooks activate in Stage 4 before Pipeline 1 is enabled; incoming events now captured + queued with pipeline_stage: captured; queue drained when tenant.status flips to active
+  2. Pipeline 2 failure UX: resolved open question — persistent error banner on current screen, form pre-filled on return to Stage 3, re-queues from Step 1
+  3. consent_preference: added to Stage 5 readiness conditions with note that user-set vs system-defaulted decision deferred to Subtask 3
+  4. Field naming: standardized to tenant.status throughout (was: tenant.status:onboarding in Stage 2, tenant.onboarding_status=ready in Stage 5)
+
+---
+
+## [2026-05-05] analysis | Onboarding Flow — Stage Map (Subtask 1 of 3)
+
+- File: wiki/analyses/onboarding-flow-stage-map.md
+- Question: What are the onboarding stages from account creation to platform readiness?
+- Tags: onboarding, pipeline-2, tenant-setup, connector-setup, readiness-check
+- Sources consulted: persona-agent-spec, channel-integration-layer, orchestration-layer-spec, lead-pipeline-architecture, persona-layer, core-business-entities
+- Notes:
+  - 5 stages: Account Creation → Org Setup → Business Profile Input (async Pipeline 2) → Connector Setup → Readiness Check
+  - Key design decision: Stage 4 (connectors) runs in parallel with async Pipeline 2 — user is never blocked waiting for LLM processing
+  - Readiness Check (Stage 5) gates on two independent upstream conditions: Pipeline 2 complete AND ≥1 active channel_connection
+  - Each stage documents: transition trigger, sync/async nature, failure handling, resume behavior
+  - Caveats flagged: Meta App Review delay, LinkedIn allowlist delay, manual channel not yet designed, billing step not modeled
+  - Placeholder references created: onboarding-flow-inputs (Subtask 2), onboarding-flow-readiness (Subtask 3)
+
+---
+
 ## [2026-05-05] analysis | LLM Operational Safeguards
 
 - File: wiki/analyses/llm-operational-safeguards.md

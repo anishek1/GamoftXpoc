@@ -735,7 +735,7 @@ This diagram shows the full lifecycle: how raw pipeline events become quality me
 4. Call Signal Agent (input: persona + ICP) → receive signal definitions → store in `signal_definitions`
 5. Generate prompt template using signal names as slot labels → store in `prompt_registry`
 6. Write lineage entries to pipeline_log for each agent call
-7. Mark tenant as onboarding_complete
+7. Set tenant.status = 'active'
 ```
 
 ### 6.2 Pre-Flight Check Before Every Pipeline 1 Run
@@ -743,7 +743,7 @@ This diagram shows the full lifecycle: how raw pipeline events become quality me
 Before any lead is processed, the orchestrator checks:
 
 ```
-Is tenant.onboarding_complete = true?
+Is tenant.status = 'active'?
 Do signal_definitions exist for this tenant?
 Does a prompt_template exist for this tenant and use case?
 
