@@ -4,6 +4,16 @@
 
 ---
 
+## [2026-05-05] correction | Orchestration Layer + Delivery Layer — Integration layer placement fixed
+
+- Files: wiki/analyses/orchestration-layer-spec.md, wiki/analyses/delivery-integration-layer.md
+- Issues fixed:
+  1. Section 2 diagram (orchestration-layer-spec): Delivery and Integration Layer connector was visually ambiguous — a floating `│` at col 36 between both pipeline boxes implied Pipeline 2 also feeds the Delivery Layer. Fixed: connector realigned to col 53 (matching Pipeline 1's `┬` output); `▼` in Delivery Layer header repositioned accordingly. Label added: "scored leads (Pipeline 1 only)".
+  2. Two distinct integration layers were not documented as a system fact. Added reading note in orchestration-layer-spec §2 and scope note in delivery-integration-layer §1 making clear: Channel Integration Layer (input side, upstream of Pipeline 1, see channel-integration-layer) and Delivery and Integration Layer (output side, post-Bucketize, downstream of Pipeline 1) are separate layers serving opposite ends of the pipeline.
+- Pages touched: orchestration-layer-spec (Section 2 diagram + reading note), delivery-integration-layer (Section 1 scope note)
+
+---
+
 ## [2026-05-05] analysis | Onboarding Flow — Completion Criteria (Subtask 3 of 3)
 
 - File: wiki/analyses/onboarding-flow-readiness.md

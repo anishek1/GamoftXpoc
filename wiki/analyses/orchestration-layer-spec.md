@@ -60,9 +60,9 @@ Every pipeline starts from the orchestrator. Every tool is called by the orchest
                                       │   Bucketize                  │
                                       └──────────────┬───────────────┘
                                            lineage   │ scored leads
-                                           writes ───┘
-                                    │
-              ┌─────────────────────▼────────────────────────────────┐
+                                           writes    │ (Pipeline 1 only)
+                                                     │
+              ┌──────────────────────────────────────▼───────────────┐
               │       DELIVERY AND INTEGRATION LAYER                  │
               │                                                       │
               │  Chat (lead cards) · Notifications · Dashboards      │
@@ -106,6 +106,14 @@ Every pipeline starts from the orchestrator. Every tool is called by the orchest
                                         ▼
                                    ORCHESTRATOR
 ```
+
+**Two points to read this diagram correctly:**
+
+1. **Pipeline 2 does not feed the Delivery and Integration Layer.** Pipeline 2's outputs (personas, signal_definitions, prompt_registry) go only to internal data stores. Only Pipeline 1's scored leads flow to the Delivery and Integration Layer, after Bucketize completes.
+
+2. **There are two distinct integration layers in the system — they are not the same thing:**
+   - **Channel Integration Layer** (upstream of Pipeline 1) — how tenant platforms connect to the system and how lead events enter Pipeline 1. WhatsApp DMs, Meta Lead Ads, LinkedIn, and website forms all enter here via OAuth and webhooks. Documented in [[analyses/channel-integration-layer]].
+   - **Delivery and Integration Layer** (downstream of Pipeline 1, post-Bucketize) — how scored leads are delivered to salespeople, CRM systems, dashboards, and external APIs. Documented in [[analyses/delivery-integration-layer]].
 
 **There are 4 LLM agents in the entire system:**
 

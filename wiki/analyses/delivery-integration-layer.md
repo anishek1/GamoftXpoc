@@ -33,6 +33,8 @@ This layer is not in the critical path of Pipeline 1. Scoring completes first. D
 | Report delivery | Scheduled summaries (weekly, monthly) delivered to team lead and admin |
 | External API and webhooks | Programmatic integration for tenants who want to pull results or receive events |
 
+**Scope — output side only:** This is the *output-side* integration layer. It handles everything that happens to a lead *after* scoring. It is distinct from the [[analyses/channel-integration-layer]], which is the *input-side* integration layer — handling how tenant platforms (WhatsApp, Meta, LinkedIn, website) connect to the system and feed lead events into Pipeline 1. These two layers serve opposite ends of the pipeline and are documented separately.
+
 **Design principle: salespeople never leave the chat interface.**
 
 The chat UI is not one channel among many — it is the primary delivery surface for everything operational. Lead cards arrive in chat. Feedback is submitted in chat. HOT alerts fire in chat. The team lead's feedback recommendations land in chat. The proactive business check-in happens in chat. External dashboards and CRM sync exist for management visibility and integration purposes — they are not the tool salespeople use day to day.
