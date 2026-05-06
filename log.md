@@ -4,6 +4,70 @@
 
 ---
 
+## [2026-05-07] analysis | Client Configuration Schema — Default and Override Settings (Subtask 3 of 3)
+
+- File: wiki/analyses/client-config-schema-defaults.md
+- Question: What are the default values and client override behavior for operational settings in the client configuration schema?
+- Tags: client-config, schema, defaults, tiering, tenant-config, operational-limits, overrides, system-config
+- Sources consulted: service-scaling-strategy, llm-operational-safeguards, rating-agent-spec, execution-type-classification, orchestration-layer-spec, sources/2026-core-business-entities, governance-observability-layer
+- Notes:
+  - Two-entity model: tier lives on tenant (identity/commercial); operational limits live in tenant_config (separate FK entity); three reasons documented (RBAC, change frequency, audit trail)
+  - Group 1 (Pipeline Execution): scoring_concurrency_cap (2/3/5), pipeline_runs_per_hour (20/50/null); Haiku semaphore scope gap flagged (Caveat 3)
+  - Group 2 (LLM Cost Controls): daily_llm_cost_cap_usd Basic=5.00, Standard/Premium=[TBD]; tenant-can-lower pattern; rejection-over-silent-cap for raise requests; alert 80%, hard stop 100%, midnight UTC reset
+  - Group 3 (Token Budget): token_budget_per_lead (4000/8000/null); 16K hard block (PromptTooLargeError); touchpoints-first truncation strategy
+  - Group 4 (API Rate Limits): api_requests_per_minute (30/100/500); enforced at API gateway layer
+  - Group 5 (Reporting): scheduled_reports (none/weekly_digest/daily_digest+custom) — tier-locked, no override path
+  - Group 6 (Quality Gate): needs_review_threshold (float 0.0-1.0, default [TBD]); overridable by team lead; affects Output Schema Layer routing only; two candidates 0.60/0.75 documented
+  - Group 7 (Infrastructure): infra_model (pool/pool/pool-or-silo), read_path (shared/shared/dedicated) — tier-locked; silo flag is migration eligibility marker, not immediate toggle (Caveat 6)
+  - Group 8 (LLM/Prompt Config): llm_model_override (null/null/null), active_prompt_version (null/null/null) — both open decisions; platform admin only
+  - Tier defaults matrix: complete table all 11 fields × 3 tiers
+  - Override enforcement: resolution order diagram (tier change → populates defaults → per-field override within bounds); role permissions table (5 roles × all fields); tenant_config NOT cached (read fresh at P1-0d) vs PersonaObject 15-min TTL
+  - system_config: 7 system-wide fields (system_monthly_cost_cap_usd=$100, cost_alert_threshold_pct=0.80 [PROPOSED configurable — source documents as constant], default_tier=basic, default_llm_model=claude-sonnet-4-6, cost_anomaly_multiplier=3.0× [PROPOSED configurable — source documents as constant], persona_cache_ttl_seconds=900 [PROPOSED configurable — source documents as constant], max_prompt_tokens=16000 [not configurable])
+  - provider_pricing_config: per-model pricing table entity (6 fields: provider, model, input/cached/output price per 1M tokens, effective_from/to)
+  - Entity Gaps: 4 new entities (tenant_config, system_config, provider_pricing_config, prompt_registry) + 1 field addition (tenant.tier) needed in 32-entity catalog
+  - 6 open decisions: Standard/Premium daily cost caps; needs_review_threshold default; Haiku concurrency semaphore scope; LLM model config scope (global vs per-tenant); prompt storage (git vs DB); silo migration workflow ownership
+  - Three-pass draft→gaps→refine cycle completed; advisor call timed out; proceeded with own analysis
+  - POST-FILING CORRECTIONS ROUND 1 (same session): (1) tenant.status enum corrected — suspended/churned removed (not in vault; state machine is onboarding→active only); (2) prompt_registry added as 4th missing entity gap (absent from 32-entity catalog, present in 6+ docs); (3) needs_review_threshold routing bands clarified — source ambiguity between fixed <50% floor and TBD configurable threshold (0.60/0.75) now documented explicitly; (4) cached_input_token_price_usd description corrected to match source language ("90% less" not "0.1×")
+  - POST-FILING CORRECTIONS ROUND 2 (same session — systematic invented-detail audit): (5) scoring_concurrency_cap override minimum removed ("minimum of 1" not in vault); (6) pipeline_runs_per_hour queue-not-reject claim marked [PROPOSED] (queue behavior only sourced for cost caps, not rate limits); (7) daily_llm_cost_cap_usd override minimum removed ($0.50 floor not in vault); (8) tenant-can-lower / platform-controls-ceiling pattern marked [PROPOSED] (vault only says "configurable per tenant", not who or in which direction); (9) token_budget_per_lead override minimum removed ("minimum of 1,000" not in vault); (10) api_requests_per_minute API gateway enforcement point marked [PROPOSED] (enforcement architecture not specified in vault); (11) Role Permissions table given prominent [PROPOSED] header note (4-role model is sourced; per-field cell assignments are not); (12) rejection-over-silent-cap rationale marked [PROPOSED design principle]; (13) cost_alert_threshold_pct / cost_anomaly_multiplier / persona_cache_ttl_seconds "Mutable By" column marked [PROPOSED configurable] (all three documented as constants in sources, not configurable settings); (14) explanatory note added to system_config section distinguishing sourced constants from proposed-configurable fields; (15) log entry mismatch fixed (fallback_llm_model and onboarding_timeout_minutes replaced with actual fields); (16) entity gap count corrected to "four entities" in §Entity Gaps body text
+
+---
+
+## [2026-05-07] analysis | Client Configuration Schema — Persona and Scoring Preference Fields (Subtask 2 of 3)
+
+- File: wiki/analyses/client-config-schema-persona-scoring.md
+- Question: What are the persona and scoring preference fields in the client configuration schema — dimension weights, bucket thresholds, output preferences, and custom rules?
+- Tags: client-config, schema, persona-layer, scoring-weights, banding, signal-weights, recommended-action
+- Sources consulted: persona-agent-spec, rating-agent-spec, llm-io-contract, concepts/persona-layer, concepts/signal-types, service-scaling-strategy
+- Notes:
+  - Group 1 (Dimension Scoring Weights): scoring_weights.{fit, intent, engagement, behaviour, context}; defaults 0.25/0.25/0.20/0.20/0.10; must sum to 1.0 ± 0.001; enforced at Persona Agent output and Pipeline 1 pre-flight (PersonaInvalidError → human_review); sub-score ceilings 25/25/20/20/10 at defaults — hardcoded in llm-io-contract (spec bug if weights overridden)
+  - Group 2 (Bucket Threshold Configuration): banding.hot_min=80, warm_min=55, cold_max=54; cold_max always = warm_min−1 (stored explicitly but derivable); THRESHOLD_ORDER invariant (warm_min < hot_min); Output Schema Layer enforces banding — banding always wins over LLM bucket claim
+  - Group 3 (Output Tone Preference): tone string; present in PersonaObject but ABSENT from llm-io-contract INPUT_SCHEMA `persona` object — wiring gap flagged; three resolution paths noted; no invented downstream behavior
+  - Group 4 (Custom Scoring Rules): custom_rules string[]; same INPUT_SCHEMA gap as tone; also used by Persona Agent for uncertainty flagging (null notes pattern)
+  - Group 5 (Signal-Level Weights): signal.weight_within_dim; per-dimension sum-to-1.0 constraint; ONLY field editable without a full Persona Agent re-run; asymmetry explicitly documented
+  - Group 6 (Output Format Constraint): recommended_action 7-value enum (call_immediately, schedule_demo, send_pricing_deck, follow_up_scheduled, send_qualifying_message, nurture, archive); per-lead LLM output — NOT a PersonaObject field; B2C coverage gap noted
+  - Change Management Summary table: 6 rows covering all groups and their change paths
+  - Three-level scoring config architecture (dimension weights → signal weights → bucket thresholds) documented as ASCII diagram
+  - 5 Caveats: (1) sub-score ceiling inconsistency with per-tenant weight overrides, (2) tone/custom_rules not wired in INPUT_SCHEMA, (3) recommended_action B2C gap, (4) no UI/API for direct signal weight edit, (5) cold_max redundant storage
+  - Advisor consulted before drafting; sub-score inconsistency surfaced as spec bug; tone/custom_rules gap confirmed; three-pass draft→gaps→refine cycle completed
+
+---
+
+## [2026-05-06] analysis | Client Configuration Schema — Business Profile Fields (Subtask 1 of 3)
+
+- File: wiki/analyses/client-config-schema-business-profile.md
+- Question: What are the business profile fields in the client configuration schema — covering industry, business model, geography, and target market?
+- Tags: client-config, schema, business-profile, onboarding, tenant-setup, persona-layer
+- Sources consulted: onboarding-flow-inputs, persona-agent-spec, concepts/persona-layer, sources/2026-core-business-entities, concepts/signal-types
+- Notes:
+  - Group 1 (User-Collected, Stage 3): 6 fields — business_type (enum B2B|B2C|Hybrid), industry (string 3-100 chars), business_description (string 150-2000, dual storage), target_audience (string[], ≥1 entry, label adapts per business_type), geography_focus (string[], ≥1 entry, target market not client location), negative_profiles (string[], optional)
+  - Group 2 (LLM-Inferred, Persona Agent Step 1): sales_cycle, ticket_size, decision_complexity, product_lines — stored in personas entity; never user-editable
+  - Group 3 (LLM-Inferred, Persona Agent Step 2 / IcpDefinition): icp_description, target_segment, company_size_preference, priority_signals, disqualifying_signals, buying_triggers, icp_examples — stored in ideal_customer_profile; disqualifying_signals feeds Pipeline 1 Disqualification Gate directly
+  - Group 4 (System-Generated): business_profile_id, tenant_id, profile_status (draft|active|archived), profile_version (integer, increments on Persona Agent re-run only), created_at, updated_at, persona_agent_run_id
+  - Design rules documented: business_type as canonical business model (operational model LLM-inferred from business_description, not a separate field); business_description dual storage (raw → business_profile_source, strengthened → business_profile); geography_focus captures target market geography not client location; target_audience form label maps to target_roles in PersonaObject (B2C legacy naming caveat)
+  - Advisor consulted before drafting; confirmed no invented fields; three-pass draft→gaps→refine cycle completed
+
+---
+
 ## [2026-05-05] correction | Orchestration Layer + Delivery Layer — Integration layer placement fixed
 
 - Files: wiki/analyses/orchestration-layer-spec.md, wiki/analyses/delivery-integration-layer.md
