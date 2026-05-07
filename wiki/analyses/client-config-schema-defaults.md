@@ -21,6 +21,16 @@ status: COMPLETE — Subtask 3 of 3 (Business profile fields in client-config-sc
 
 ---
 
+## Plain-English Summary
+
+**Why this exists:** The platform serves multiple clients simultaneously on shared infrastructure. Without limits, one client could run thousands of AI calls per hour, spike costs for everyone, and slow the system down. This document defines the guardrails — how many AI calls each client can run, how much they can spend per day, and how much data they can process per request.
+
+**Where it fits:** These settings live in the `tenant_config` database record, which is loaded at the start of every lead scoring run. They sit between the client's account setup and the actual pipeline execution — the pipeline checks these limits before doing any AI work. They're also the mechanism for the three-tier subscription model (basic / standard / premium).
+
+**How it works:** Every client is assigned a tier when they sign up (default: basic). The tier sets automatic defaults for all limits. Some limits can be adjusted by the client's admin or the platform team within the tier's allowed range — for example, a client can voluntarily lower their own daily spending cap below the tier default, but cannot raise it above it. Changes take effect immediately on the next scoring run, with no cache delay. A separate system-level config applies across all clients as a final safety net.
+
+---
+
 ## Purpose of This Document
 
 This document defines the **operational settings section** of the client configuration schema. It specifies every per-tenant limit field, the tiering framework that drives defaults, which settings can be overridden and by whom, how overrides are enforced, and the system-wide settings that apply across all tenants.

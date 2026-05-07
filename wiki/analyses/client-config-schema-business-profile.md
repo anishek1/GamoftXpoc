@@ -19,6 +19,16 @@ status: COMPLETE — Subtask 1 of 3 (Persona and scoring preference fields in cl
 
 ---
 
+## Plain-English Summary
+
+**Why this exists:** The system scores leads by comparing them against a client's ideal customer. To do that, it first needs to understand the client's business — what they sell, who they sell to, and where. This document defines every piece of information the system collects and infers about a client's business.
+
+**Where it fits:** These fields are the starting point of all intelligent behaviour in the platform. They are collected once at onboarding (Stage 3), fed into the Persona Agent (Pipeline 2), and the outputs power every lead scoring call (Pipeline 1) for that client forever after. Change this section and the entire scoring logic for the tenant changes.
+
+**How it works:** The client fills in 6 fields on a form — business type, industry, description, target audience, geography, and who to exclude. The system runs a light AI step to strengthen the description, then passes everything to the Persona Agent. The Persona Agent infers 4 more business context fields (like deal size and sales cycle length) and then builds a full "ideal buyer" profile. The final result is a complete picture of who the client is and who their perfect customer looks like — stored and ready to score every incoming lead against.
+
+---
+
 ## Purpose of This Document
 
 This document defines the **business profile section** of the client configuration schema. It specifies every field that describes what a client's business is, who they serve, and what markets they operate in.

@@ -19,6 +19,16 @@ status: COMPLETE
 
 ---
 
+## Plain-English Summary
+
+**Why this exists:** AI calls are not perfectly reliable. They time out, return garbled responses, hit rate limits, or — if left unchecked — run up large bills. Without explicit rules for handling each of these situations, the system would crash on the first hiccup, silently produce wrong scores, or quietly spend far more than intended. This document is the "what to do when things go wrong" rulebook for every AI interaction in the platform.
+
+**Where it fits:** These safeguards wrap every AI call in Pipeline 1 (scoring) and Pipeline 2 (persona setup). They activate automatically — no manual intervention is needed for the normal failure cases. The rules govern what happens between the moment the system sends a request to the AI and the moment a result (or a clean failure notice) comes back.
+
+**How it works:** Three layers of protection work together. First, if a call fails, the system retries it once — with different waiting behavior depending on whether the failure was a timeout, a bad response format, or a provider outage. Second, if both attempts fail, the system doesn't crash — it produces a structured "scoring failed" notice that routes the lead to a human reviewer queue rather than losing it. Third, the system aggressively caches repeated work to cut costs: the AI model's instructions are cached for 5 minutes per client (so scoring 50 leads costs roughly the same as scoring 5), and the client's scoring configuration is cached for 15 minutes in memory. Daily spending caps per client and a monthly system-wide cap provide the final financial guardrail.
+
+---
+
 ## Answer / Finding
 
 This document defines three operational safeguards for the LLM layer of the Lead Intelligence Engine. These safeguards ensure the system does not crash under failure, does not waste money, and does not produce inconsistent outputs.

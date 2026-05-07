@@ -21,6 +21,16 @@ status: COMPLETE — Subtask 2 of 3 (Business profile fields in client-config-sc
 
 ---
 
+## Plain-English Summary
+
+**Why this exists:** Not every business evaluates leads the same way. A company with a long enterprise sales cycle cares more about whether a lead has declared intent (did they ask for a demo?). A consumer brand running flash sales cares more about whether someone has engaged repeatedly and quickly. This document defines the knobs that make the scoring system work correctly for each specific client — rather than using the same weights for everyone.
+
+**Where it fits:** These settings live in the PersonaObject — the AI-generated configuration profile for each client, stored in the `personas` table and cached for 15 minutes. Every time the system scores a lead, it loads this PersonaObject first. Without it, scoring cannot begin.
+
+**How it works:** After a client completes onboarding, the Persona Agent automatically produces three layers of scoring configuration: (1) how much each of the five scoring dimensions counts toward the total score, (2) what thresholds separate HOT / WARM / COLD leads, and (3) what tone and special rules apply. None of this is set by the client directly — the AI infers it from the client's business description. The only exception is signal-level weights (which signals matter most *within* a dimension), which can be adjusted directly without re-running the entire Persona Agent.
+
+---
+
 ## Purpose of This Document
 
 This document defines the **scoring configuration section** of the client configuration schema. It specifies every field that controls how leads are evaluated, scored, bucketed, and surfaced to the salesperson.

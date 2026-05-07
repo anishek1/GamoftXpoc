@@ -20,6 +20,16 @@ status: COMPLETE — Subtask 1 of 3 (stage map only; inputs in onboarding-flow-i
 
 ---
 
+## Plain-English Summary
+
+**Why this exists:** Onboarding is not a simple linear form — it involves background AI processing that can take up to 90 seconds, OAuth redirects to external platforms, and the possibility of real customer messages arriving before the system is fully set up. Without a clear stage map, it's easy to build the wrong sequence and either block users unnecessarily or let the system start scoring before it's ready.
+
+**Where it fits:** This is the client's journey from the moment they sign up to the moment their first lead gets scored. It spans 5 stages across two parallel tracks — the user-visible UI flow and the background AI processing (Pipeline 2) that runs while the user continues setting up.
+
+**How it works:** Stages 1 and 2 are straightforward — create an account, create an organization. Stage 3 is where the AI kicks in: the user submits their business profile and the system immediately starts building the scoring configuration in the background (while the user is free to continue to Stage 4). Stages 3 and 4 run in parallel — channel connector setup happens at the same time as AI processing, not after it. Stage 5 waits for both to complete before flipping the system live. Any customer messages that arrive during this window are safely held and processed the moment activation completes.
+
+---
+
 ## Answer / Finding
 
 The onboarding journey has five sequential stages. Stages 3 and 4 run partially in parallel — by design — because Pipeline 2 is asynchronous. The user is never blocked waiting for LLM processing to complete.

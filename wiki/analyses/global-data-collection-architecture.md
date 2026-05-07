@@ -19,6 +19,16 @@ status: COMPLETE — supersedes India-specific provider stack in lead-enrichment
 
 ---
 
+## Plain-English Summary
+
+**Why this exists:** A lead is not just a name and phone number. Before the AI can score how likely someone is to buy, it needs to know who they are (their role, their company, their seniority), what their company is (its size, industry, financial status), and what they actually want. This document defines how the system gathers all of that information — from a minimal initial contact — using official government databases, licensed commercial APIs, and one lightweight AI call. No website scraping; only legal data sources.
+
+**Where it fits:** This is Pipeline 1, Steps 0 through 12 — the enrichment phase that runs before the Scoring Agent (Step 13). Every lead goes through some or all of these steps before receiving a score. The pipeline handles leads from any country and any channel (WhatsApp, Instagram, Facebook, LinkedIn), with different data sources activated depending on where the lead is from and whether they're a business buyer or an individual consumer.
+
+**How it works:** A 13-step pipeline takes a raw incoming message and builds a complete lead profile. The first three steps (filter noise, parse the message with a cheap AI call, classify B2B vs B2C) happen for free in milliseconds. Then the system identifies the country, checks account history, routes to the right company and person lookup APIs for that jurisdiction, handles location ambiguity, checks consent and intent, and finally hands a fully enriched lead to the Scoring Agent. A key design choice — the Source Registry pattern — means data sources are stored in a config file rather than in code, so adding support for a new country requires no redeployment.
+
+---
+
 ## The Plain-English Version First
 
 When someone sends a message to a tenant's WhatsApp, Instagram, or LinkedIn, the system needs to answer three questions before it can score the lead:

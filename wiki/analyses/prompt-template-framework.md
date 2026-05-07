@@ -21,6 +21,16 @@ status: COMPLETE
 
 ---
 
+## Plain-English Summary
+
+**Why this exists:** Every AI call in the system requires a carefully written prompt — a set of instructions telling the AI what to do and what to return. Without a standard structure, different prompts would be inconsistent, hard to maintain, and expensive to run. A standard structure also unlocks a significant cost saving: if the instructions stay the same across many leads from the same client, the AI provider caches them and charges far less.
+
+**Where it fits:** This framework governs all five categories of AI calls in the platform: scoring leads (Rating Agent), reading raw messages (Message Parser), and building the client's scoring configuration (Persona Agent Steps 1, 2, and 3). Any new AI call added to the system should follow this same structure.
+
+**How it works:** Every prompt is split into four sections. The first three (role and rules, business context, output format) are the same for all leads from the same client — they go into the "system message" which the AI provider caches automatically. Only the fourth section (the actual lead data) changes per lead — it goes into the "user message" which is never cached. This split is the key architectural choice: it means scoring 50 leads from one client costs roughly the same in AI fees as scoring 5, because the bulk of the instructions are cached after the first call. Two complete example prompts with full annotations are included to show the framework in action.
+
+---
+
 ## Answer / Finding
 
 ---

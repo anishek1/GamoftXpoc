@@ -20,6 +20,16 @@ status: COMPLETE
 
 ---
 
+## Plain-English Summary
+
+**Why this exists:** When the system sends data to the AI model and receives a score back, both sides need to agree on the exact format — what fields to send, what types they must be, and what the response must look like. Without this agreement, the AI might return a score as text ("eighty-six") instead of a number (86), or skip a required field, and the system would either crash or silently store wrong data. This document is the precise contract that both sides must follow.
+
+**Where it fits:** This contract sits at the boundary between the data enrichment steps (Steps 0–12 of Pipeline 1) and the Rating Agent (Step 13). Everything before it gathers and shapes data; the contract specifies exactly how that data must be packaged and what to expect back. It is also the reference for the retry logic — validation failures trigger the retry rules defined here.
+
+**How it works:** Three JSON schemas work together. The INPUT_SCHEMA defines every field the system must send to the AI (11 top-level sections including lead details, company data, the client's scoring configuration, behavioral signals, and context). The OUTPUT_SCHEMA defines the 7 fields the AI must return (score, bucket, reasoning, completeness, sub-scores, recommended action, review flag). The VALIDATION_RULES define what makes a valid input or output — including cross-field rules like "the five sub-scores must add up to the total score" and "if this is the lead's first score, prior history fields must be empty." When validation fails, the system knows exactly which rule was violated and whether to retry or escalate.
+
+---
+
 ## Answer / Finding
 
 Three machine-consumable contracts are defined below. All three are pure JSON (no comments). They plug directly into an automated pipeline without human correction.

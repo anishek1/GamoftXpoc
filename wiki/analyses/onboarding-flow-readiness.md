@@ -20,6 +20,16 @@ status: COMPLETE — Subtask 3 of 3; resolves deferred consent_preference decisi
 
 ---
 
+## Plain-English Summary
+
+**Why this exists:** The system must not score a single lead before it is ready to do so correctly. If the AI's scoring configuration hasn't been built yet, any score produced would be meaningless. And if no channel is connected, there's no way to receive leads in the first place. This document defines the exact moment the system becomes ready — and what "ready" means precisely.
+
+**Where it fits:** This is Stage 5 of onboarding — the final gate that sits between a client completing their setup and the platform going live for them. When both conditions pass, the system flips `tenant.status` from `onboarding` to `active`, drains any leads that were already queued during setup, and enables live scoring. This is a one-time, one-way transition.
+
+**How it works:** Exactly two conditions must both be true at the same time: (1) the Persona Agent has successfully produced all four required outputs — the scoring profile, the ideal customer definition, the signal list, and the prompt template — and (2) at least one channel connector (WhatsApp, Instagram, Facebook, LinkedIn, or website) has reached `active` status. If either condition is missing, the system waits. No partial activation exists. Once both pass, activation is atomic — the status change, queue drain, and user notification happen as a single coordinated sequence.
+
+---
+
 ## Answer / Finding
 
 Two conditions must both be true for Stage 5 (Readiness Check) to pass and `tenant.status` to flip to `active`:
