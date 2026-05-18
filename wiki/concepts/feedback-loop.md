@@ -50,6 +50,16 @@ The key insight from Section 19.3: "Original feedback loop attached to wrong lay
 
 v1 only addresses #6. The deferred three-layer system addresses all six.
 
+## Ingestion-Level Classifier Feedback (New — Phase 0)
+
+A distinct feedback path exists at the Ingestion Service layer, separate from the salesperson outcome feedback above. When leads created from WhatsApp or Instagram filtering enter the tenant dashboard, tenants can mark them as "This is not a lead." This feedback targets the **two-stage classifier** (rule filter + LLM classification), not the scoring weights. Over time, collected rejections are used to improve classifier accuracy.
+
+This is logged in the source as a tenant-facing feedback mechanism, not a governance layer artefact. It is distinct from:
+- Salesperson thumbs up/down (targets scoring weights, Layers 1–3 above)
+- Team lead quality reviews (targets signal definitions or Pipeline 2 re-runs)
+
+(source: [[sources/2026-lead-ingestion-strategy]])
+
 ## Evidence & Examples
 
 - "Make it ONE TAP — thumbs up/down per lead card. If feedback rate drops below 20%, alert team lead. Zero feedback means zero learning." (source: [[sources/2026-lead-intelligence-engine-reference]])

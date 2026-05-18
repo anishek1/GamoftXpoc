@@ -58,11 +58,26 @@ Runs once when a tenant is onboarded. Re-runs when tenant business profile chang
 
 The Signal Agent decides how many signals are needed per dimension (Intent: 5+, Engagement: 6+, others TBD). Signal definitions become the fill-in-the-blank slots in the Scoring Agent's prompt template.
 
+## Ingestion Layer (Upstream of Pipeline 1)
+
+Before Pipeline 1 fires, the **Ingestion Service** acquires and filters incoming data from four Phase 0 sources:
+
+| Source | Type | Filtering |
+|---|---|---|
+| Email | Push (inbound address) | Subject keyword + sender allowlist; structural template (no per-email LLM) |
+| WhatsApp Business | Push (webhook) | [[concepts/two-stage-lead-filtering]] — rule stage (~30–40% dropped) + LLM classification |
+| Instagram DMs | Push (webhook) | [[concepts/two-stage-lead-filtering]] + sender profile signals; voice notes transcribed |
+| Google Spreadsheet | Pull (15-min poll) | None (tenant-curated); basic validation only |
+
+Across all sources: normalization adapters convert to a unified internal schema; deduplication matches on phone + email. An immutable intake event log stores every record for replay. Full spec: [[concepts/lead-ingestion-sources]].
+
+For B2C tenants, historical order and chat data is acquired separately via [[concepts/b2c-data-acquisition]] (official store/payment/chat APIs → webhooks → CSV upload) and used during the Enrichment stage.
+
 ## Pipeline 1 — Event/Lead Flow
 
 | Stage | Type | Output |
 |---|---|---|
-| Event trigger | TOOL | Structured task / run_id |
+| Event trigger | TOOL | Structured task / run_id (triggered by Ingestion Service after filtering) |
 | Data Gather | TOOL | Raw leads from all channels |
 | Lead Enrichment | TOOL (deterministic) | Enriched lead + extracted signal values |
 | Normalise | TOOL | Clean unified lead schema |
@@ -164,6 +179,9 @@ The two-pipeline separation means:
 
 ## Related Concepts
 
+- [[concepts/lead-ingestion-sources]] — 4-source Phase 0 ingestion (email, WhatsApp, Instagram, Sheets) that triggers Pipeline 1
+- [[concepts/two-stage-lead-filtering]] — rule filter + LLM classification; noise elimination on WhatsApp and Instagram paths upstream of Pipeline 1
+- [[concepts/b2c-data-acquisition]] — B2C order/chat history acquisition; feeds Pipeline 1 Enrichment stage for B2C tenants
 - [[concepts/agent-vs-tool-classification]] — updated classification for 4 LLM agents
 - [[concepts/persona-layer]] — produced by Onboarding Agent in Pipeline 2
 - [[concepts/confidence-first-class]] — output of Scoring Agent, drives routing
@@ -172,10 +190,12 @@ The two-pipeline separation means:
 - [[concepts/score-decay]] — background job after Pipeline 1
 - [[concepts/action-sla]] — assigned at Bucketize stage
 - [[concepts/capability-registry]] — drives Pipeline 1 tool sequence
-- [[concepts/feedback-loop]] — feeds Governance Layer
+- [[concepts/feedback-loop]] — feeds Governance Layer; ingestion-level classifier feedback is a distinct sub-path
 - [[analyses/delivery-integration-layer]] — final mile after Bucketize; delivers scored leads to chat, CRM, dashboards, and external systems; feedback signals from delivery feed the governance feedback loop
 
 ## Sources
 
 - [[sources/2026-lead-intelligence-engine-reference]] — Sections 01, 03, 12, 14, 19
+- [[sources/2026-lead-ingestion-strategy]] — Phase 0 ingestion: 4 sources, filtering, normalization, deduplication, intake event log
+- [[sources/2026-b2c-data-acquisition]] — B2C historical data acquisition: API-first, webhooks, CSV upload, no-scraping policy
 - raw/assets/lead_intelligence_manual_enrichment_playbook — enrichment dimensions, bucket thresholds, governance rules

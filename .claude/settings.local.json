@@ -7,7 +7,20 @@
       "Bash(powershell -command ' *)",
       "Bash(python *)",
       "WebSearch",
-      "WebFetch(domain:developers.facebook.com)"
+      "WebFetch(domain:developers.facebook.com)",
+      "WebFetch(domain:developers.google.com)",
+      "WebFetch(domain:www.newscatcherapi.com)",
+      "WebFetch(domain:w.tracxn.com)",
+      "WebFetch(domain:probe42.in)",
+      "WebFetch(domain:surepass.io)",
+      "WebFetch(domain:apiportal.probe42.in)",
+      "WebFetch(domain:resources.probe42.in)",
+      "WebFetch(domain:serper.dev)",
+      "WebFetch(domain:scrapfly.io)",
+      "WebFetch(domain:e338ebdbb06e0ec4ec7d11b7a53702dc.apidog.io)",
+      "WebFetch(domain:docs.newscatcherapi.com)",
+      "WebFetch(domain:free-docs.newscatcherapi.com)",
+      "WebFetch(domain:www.postman.com)"
     ]
   }
 }

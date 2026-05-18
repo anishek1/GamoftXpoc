@@ -4,6 +4,92 @@
 
 ---
 
+## [2026-05-18] analysis | 6 Specification Documents — Context Construction, Prompt Orchestration, LLM I/O Contract, Adaptive Scoring B2B/B2C, Prompt Evaluation, Persona Classification
+
+- Files created/updated:
+  - wiki/analyses/context-construction-specification.md (NEW)
+  - wiki/analyses/prompt-orchestration-framework.md (NEW)
+  - wiki/analyses/llm-io-contract.md (REVISED — v1.1.0)
+  - wiki/analyses/adaptive-scoring-strategy-b2b-b2c.md (NEW)
+  - wiki/analyses/prompt-evaluation-framework.md (NEW)
+  - wiki/analyses/persona-classification-framework.md (NEW)
+- Notes:
+  - context-construction-specification: Defines Prompt Layer vs Orchestrator ownership boundary, static/dynamic split, signal ordering rule (alphabetical for cache stability), pre-send validation gate (8 checks), PII-in-user-message-only rule, tiered token budgets, PersonaObject 15-min TTL, 3-identifier lineage (prompt_template_version + persona_version + schema_version)
+  - prompt-orchestration-framework: Resolves TBD on prompt storage (hybrid: code for system-level, DB for tenant-level), specifies prompt_registry data model, version lifecycle state machine (draft→active→deprecated), rollback procedure, MAJOR version backward-compatibility requirement, prompt template generation automation step
+  - llm-io-contract: Revised v1.1.0 — resolves context_inputs required-field contradiction (fields made optional, cross-field rules enforce variant-conditional requirements), fixes behavior.revisit_count minimum to 0 (Lead Ad entries), adds COMPANY_B2B_REQUIRED cross-field rule, adds additionalProperties:true on signal dimension objects for tenant extensibility, retains reasoning-as-structured-object and recommended_action-enum decisions
+  - adaptive-scoring-strategy-b2b-b2c: Defines business_type as hard mode selector (not hint), signal applicability enforcement, mode-specific default weights (B2B 25/25/20/20/10 vs B2C 20/25/20/25/10), mode-specific ICP structures (company fields vs demographic fields), mode-specific lead completeness formulas (B2B penalises missing company data; B2C does not), mode-specific disqualification rules, mode-specific default bucket thresholds (B2B 80/55, B2C 75/50), enrichment pipeline step gating by mode, Message Parser extraction fields by mode
+  - prompt-evaluation-framework: Defines mandatory evaluation before draft→active transition, 6 evaluation dimensions (4 automated + 2 human), golden test set specification (10 required categories, test case format, B2B/B2C coverage), automated check thresholds (100% schema compliance, ≥90% bucket accuracy), team lead review procedure (5–10 case sample), regression detection thresholds, instruction-following checks (hallucinated signals, not_detected misuse, markdown in output), 5 online monitoring signals that trigger re-evaluation
+  - persona-classification-framework: Full PersonaObject schema with inference_flags, IcpDefinition schema by mode, persona quality criteria (completeness + signal coverage + ICP specificity), minimum signal coverage requirements (Fit≥3, Intent≥5, Engagement≥4, Behaviour≥3, Context≥2), custom_rules format and enforcement rules, tone field specification (affects salesperson_note wording only), inference confidence tracking, persona change classification (Minor vs Major tier), staleness detection signals, how personas drive lead classification at scoring time
+
+---
+
+## [2026-05-16] analysis | Enrichment Tools Integration — Surepass, Probe42, Tracxn, NewsCatcherAPI, Serper
+
+- File: wiki/analyses/enrichment-tools-integration.md
+- Question: How do Surepass, Probe42, Tracxn, NewsCatcherAPI, and Serper.dev integrate into the current lead intelligence pipeline?
+- Tags: enrichment, surepass, probe42, tracxn, newscatcher, serper, pipeline-1, source-registry, normalised-event, b2b-investigation
+- Sources consulted: [[wiki/analyses/lead-enrichment-architecture]], [[wiki/analyses/global-data-collection-architecture]], [[wiki/analyses/orchestration-layer-spec]], [[wiki/analyses/signal-detection-rule-spec]], [[wiki/analyses/tech-stack-research]], [[wiki/analyses/inngest-function-design]]
+- Notes:
+  - 5 tools mapped to specific gaps in existing stack: Surepass (managed Indian govt API gateway, replaces brittle direct GSTN/MCA calls), Probe42 (Indian SMB financial intelligence not in Apollo), Tracxn (startup funding stage signal — no equivalent in current stack), NewsCatcherAPI (zero news signals in current stack; news as leading indicator), Serper.dev (Google Custom Search replacement; last-resort fallback for micro-businesses with zero enrichment)
+  - All 5 tools treated as confirmed architecture; endpoint credentials to be obtained after vendor support calls
+  - Tracxn integration fully verified from official Postman docs: POST /api/2.2/companies/search, /api/2.2/companies, /api/2.2/transactions; accessToken header; 100 req/hr playground limit
+  - NewsCatcherAPI fully verified from official docs: base URL https://v3-api.newscatcherapi.com/api; x-api-token auth; two-call strategy (aggregation_count → search only if total_hits > 0)
+  - Surepass architecture: managed gateway for 240+ Indian govt APIs; confirmed base URL kyc-api.surepass.io/api/v1; endpoints follow /corporate/{gstin,cin,pan-to-company-details} pattern; credentials via onboarding
+  - Probe42 architecture: 21M Indian companies; Probe Score 1–5; financials, court records, ROC charges, EPFO headcount; credentials via support call
+  - Serper.dev: $50/50K queries; endpoints /search, /news, /maps; Google Custom Search replacement (new customer signups closed 2025, shutdown Jan 2027)
+  - New NormalisedEvent fields: 8 Surepass fields, 11 Probe42 fields, 11 Tracxn fields, 8 NewsCatcherAPI fields, 9 Serper fields
+  - Source Registry updated: all 5 tools inserted at correct priority positions for IN jurisdiction B2B path
+  - Cost model updated: B2C ~$0.025–0.04/lead; B2B India full investigation ~$0.10–0.20/lead
+  - Pending: Surepass support call (endpoints + sandbox + pricing), Probe42 support call (API v2 docs + sandbox), Serper.dev free tier signup
+
+---
+
+## [2026-05-16] ingest | Lead Ingestion Strategy
+
+- File: raw/assets/Lead_Ingestion_Strategy.docx
+- Wiki page: [[wiki/sources/2026-lead-ingestion-strategy]]
+- Entities updated: none (no new project-specific entities)
+- Concepts created: [[wiki/concepts/lead-ingestion-sources]], [[wiki/concepts/two-stage-lead-filtering]]
+- Concepts updated: [[wiki/concepts/lead-pipeline-architecture]] (Ingestion Layer section added), [[wiki/concepts/feedback-loop]] (ingestion-level classifier feedback section added)
+- Notes:
+  - 4 Phase 0 sources: email (unique inbound address, template parsing, no per-email LLM), WhatsApp Business (API only, two-stage filter), Instagram DMs (same + sender profile signals, voice transcription), Google Spreadsheet (service account, 15-min poll, LLM column mapping, watermark column)
+  - Two-stage filtering: rule stage (~30–40% eliminated) → LLM classification (LEAD/EXISTING_CUSTOMER/NOISE/UNCLEAR); default-to-LEAD calibration
+  - Cross-source: normalization adapters, phone+email dedup, immutable intake event log, tenant "not a lead" classifier feedback
+  - Open question flagged: ingestion LLM classifier vs Message Parser (Haiku) in Pipeline 1 — same invocation or two separate LLM calls on DM path?
+
+## [2026-05-16] ingest | B2C Data Acquisition: How We Will Get Order and Chat History
+
+- File: raw/assets/B2C_Data_Acquisition.docx
+- Wiki page: [[wiki/sources/2026-b2c-data-acquisition]]
+- Entities updated: [[wiki/entities/urvee-organics]] — mentioned as primary B2C POC tenant
+- Concepts created: [[wiki/concepts/b2c-data-acquisition]]
+- Concepts updated: [[wiki/concepts/lead-pipeline-architecture]] (B2C data acquisition referenced in Ingestion Layer section)
+- Notes:
+  - 4-method hierarchy: Official APIs (Shopify/WooCommerce/BigCommerce/Magento/WhatsApp/Instagram/Messenger/Stripe/Razorpay; Phase 1: Amazon/Flipkart/Meesho seller-only) → Webhooks → CSV upload (LLM column mapping, monthly reminders) → Scraping (explicitly excluded)
+  - Hard no-scraping policy: ToS violation, legal exposure, GDPR, account suspension risk
+  - Data boundary locked to tenant's own ecosystem; cross-retailer customer history inaccessible by design
+  - Behavioral signals from own data (LTV, recency, frequency, affinity, responsiveness) stated as sufficient for B2C scoring
+
+---
+
+## [2026-05-13] analysis | Inngest Function Design — Lead Intelligence Engine
+
+- File: wiki/analyses/inngest-function-design.md
+- Question: How should the Lead Intelligence Engine be implemented as Inngest functions?
+- Tags: inngest, pipeline-1, pipeline-2, orchestration, background-jobs, scheduled, crash-recovery, concurrency
+- Sources consulted: orchestration-layer-spec, onboarding-flow-stage-map, onboarding-flow-readiness, tech-stack-research, service-scaling-strategy, governance-observability-layer, scoring-quality-metrics, score-decay, action-sla, feedback-loop, 2026-core-business-entities
+- Source docs: Entity_Reference_Guide.docx, intelligence_layer_design (1).docx, kpi-reference.docx, nine_business_impact_kpis.docx, service_boundaries.docx, er_diagram_full.png
+- Notes:
+  - 8 Inngest functions created covering all workflows
+  - Pipeline 2 (onboarding): serial 5-step LLM workflow; concurrency key = tenant_id (limit 1); explicit 2-attempt retry per LLM step; activation drains captured-lead queue
+  - Pipeline 1 data-gather: pre-flight → parallel channel fetch (12s timeout) → dedup → fan-out via sendEvent
+  - Pipeline 1 lead-processor: DM path (Pre-Filter + Haiku) + Lead Ad path (enters at Step 2); step.waitForEvent for 24h clarification timeout; per-tenant concurrency cap (default 2)
+  - Score decay cron: daily 02:00 UTC; -10@7d, -20@14d, auto-cold@30d; lineage writes wrapped non-fatal
+  - SLA monitor cron: hourly; alerts team lead on HOT/WARM breaches; writes to alert_incident
+  - Quality metrics: per-run (pipeline/run.complete event), weekly (Monday 00:00), monthly (1st, requires ≥100 outcomes); all reads from quality_snapshots only
+  - Pipeline2 rerun check: bi-weekly cron; proactive check-in + AP2 discrimination ratio signal; "system proposes, team lead approves" enforced
+  - Key caveat: implementation uses TypeScript/Next.js; tech-stack-research locks Python — team must decide on SDK language
+
 ## [2026-05-07] analysis | Client Configuration Schema — Default and Override Settings (Subtask 3 of 3)
 
 - File: wiki/analyses/client-config-schema-defaults.md

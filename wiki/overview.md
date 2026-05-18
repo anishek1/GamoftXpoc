@@ -1,12 +1,12 @@
 ---
 type: overview
-last_updated: 2026-05-03
-source_count: 3
+last_updated: 2026-05-16
+source_count: 5
 ---
 
 # Knowledge Base Overview
 
-**Last updated:** 2026-05-03 | **Sources ingested:** 3
+**Last updated:** 2026-05-16 | **Sources ingested:** 5
 
 ## What This Wiki Is About
 
@@ -30,12 +30,17 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 
 **Meta integration connection strategy is now fully specified (2026-05-03).** [[analyses/meta-integration-implementation]] now covers all three Meta surfaces. Facebook Page connection: standard OAuth 2.0 redirect, short-lived → long-lived → non-expiring Page token chain, one `subscribed_apps` call per page at connection time, no refresh job needed. Instagram Business connection: separate OAuth endpoint (`api.instagram.com/oauth/authorize`), Instagram Login path only (old Facebook Login scopes deprecated January 27, 2025), 60-day token with mandatory daily refresh job, webhook configured once at App Dashboard level covering all accounts. WhatsApp: unchanged Embedded Signup flow. Key architectural clarification: Meta delivers all webhooks to a single app-level URL; multi-tenant routing is handled internally using `object` type + `entry[].id` / `phone_number_id` → `channel_connection` lookup.
 
+**The ingestion layer and B2C data acquisition strategy are now documented (2026-05-16).** [[sources/2026-lead-ingestion-strategy]] specifies the four Phase 0 ingestion sources: email (unique per-tenant inbound address, template parsing, no per-email LLM), WhatsApp Business (API only, two-stage filter: rule stage ~30–40% + LLM classification LEAD/EXISTING_CUSTOMER/NOISE/UNCLEAR, default-to-LEAD on uncertainty), Instagram DMs (same two-stage + sender profile signals, voice note transcription), and Google Spreadsheet (service account, 15-min poll, LLM column mapping at setup, watermark column). Cross-source: normalization adapters, phone+email deduplication, immutable intake event log (replay capability), tenant "not a lead" classifier feedback. [[sources/2026-b2c-data-acquisition]] specifies how B2C tenants' historical order and chat data is acquired in four-method priority order: official APIs (Shopify, WooCommerce, BigCommerce, Magento, WhatsApp Business API, Instagram Graph API, Stripe, Razorpay) → webhooks → CSV with LLM-assisted column mapping → no scraping (hard policy: ToS violation, legal exposure, GDPR). **Open question surfaced:** Whether the WhatsApp/Instagram LLM classifier at ingestion is the same invocation as the Message Parser (Haiku) in Pipeline 1, or two separate LLM calls — needs architecture decision.
+
 **What's deferred:** The Adaptive Signal Lifecycle (Add-ons 6/7/8) — requires 2-3 months of real production data.
 
 **What's TBD:** ~50+ open decisions in Section 16 of source doc, plus: Pipeline 2 re-run triggers, prompt template versioning, Scoring Agent concurrency cap (recommend 5), concurrency guard timeout threshold (recommend 15–30 min), alert thresholds for monitoring (all after Month 1 baseline), observability tooling. **signal detection_rule format — RESOLVED 2026-04-28** (see [[analyses/signal-detection-rule-spec]]). Tech stack locked 2026-04-26 (see [[analyses/tech-stack-research]]).
 
 ## Major Themes
 
+- **[[concepts/lead-ingestion-sources]]** — 4-source Phase 0 ingestion (email, WhatsApp, Instagram, Google Sheets); normalization, deduplication, immutable intake log, classifier feedback
+- **[[concepts/two-stage-lead-filtering]]** — rule filter (~30–40% eliminated) + LLM classification (LEAD/EXISTING_CUSTOMER/NOISE/UNCLEAR); default-to-LEAD calibration; upstream of Pipeline 1
+- **[[concepts/b2c-data-acquisition]]** — 4-method B2C historical data acquisition (API-first → webhooks → CSV upload → no scraping); scoped to tenant's own ecosystem; behavioral signals sufficient for scoring
 - **[[concepts/lead-pipeline-architecture]]** — two-pipeline architecture; Pipeline 2 one-time setup, Pipeline 1 per-lead; pipeline output feeds the quality metrics layer
 - **[[concepts/intelligence-layer]]** — four-component internal pipeline (Persona Engine → Prompt Layer → Rating Agent → Output Schema Layer); single `score_lead()` entry point; 60-second hard timeout; never writes to data layer directly
 - **[[concepts/signal-types]]** — five scoring dimensions (Fit 25%, Intent 25%, Engagement 20%, Behaviour 20%, Context 10%); defaults overridden per tenant via persona; both data model (`signal`, `signal_evaluation`) and prompt structure
@@ -73,7 +78,8 @@ The product vision is unchanged: **salespeople never leave the chat interface.**
 
 ## Open Questions
 
-1. **Signal detection_rule format:** **RESOLVED 2026-04-28.** Named extractor + params model. 13 extractor types covering all 5 dimensions. Persona Agent emits detection_rules directly (no engineering mapping step). Fully deterministic — signal extraction incurs no LLM cost. See [[analyses/signal-detection-rule-spec]].
+1. **Ingestion LLM vs Message Parser overlap:** Is the WhatsApp/Instagram LLM classifier at the Ingestion Service layer the same Haiku invocation as the Message Parser in Pipeline 1 Step 1, or two separate LLM calls on the DM path? If two, the cost model needs updating. `[TBD — architecture decision]`
+2. **Signal detection_rule format:** **RESOLVED 2026-04-28.** Named extractor + params model. 13 extractor types covering all 5 dimensions. Persona Agent emits detection_rules directly (no engineering mapping step). Fully deterministic — signal extraction incurs no LLM cost. See [[analyses/signal-detection-rule-spec]].
 2. **Pipeline 2 re-run triggers:** Proactive check-in cadence (2-week or monthly?) and feedback-driven flagging threshold (fixed count N = ?) `[TBD — team decision after Month 1]`
 3. **Lead completeness score formula and threshold:** Confirmed it's completeness (not LLM confidence) — see [[analyses/confidence-scoring-brainstorm]]; formula and `needs_review` threshold `[TBD]`
 4. **Technology stack:** Backend language, model config scope (global vs per-tenant), prompt storage (code vs data layer), secrets vault (AWS vs HashiCorp), observability tooling — `[TBD]`. LLM provider **RESOLVED 2026-05-03**: Anthropic Claude Sonnet 4.6 primary, OpenAI GPT-4o via LiteLLM fallback. See [[analyses/tech-stack-research]].

@@ -1,11 +1,11 @@
 ---
-last_updated: 2026-05-01
-source_count: 3
+last_updated: 2026-05-16
+source_count: 5
 ---
 
 # Wiki Index
 
-**Last updated:** 2026-05-03 | **Sources ingested:** 3
+**Last updated:** 2026-05-16 | **Sources ingested:** 5
 
 *This file is maintained by the Wiki Agent. Do not edit manually.*
 
@@ -21,6 +21,8 @@ source_count: 3
 - [[wiki/sources/2026-lead-intelligence-engine-reference]] — Master pre-planning reference for Multi-Tenant Adaptive Lead Intelligence Engine v2.0 (Gamoft) | ingested: 2026-04-14
 - [[wiki/sources/2026-intelligence-layer-design]] — Intelligence Layer design spec: 4-component pipeline, score_lead() interface, 5 scoring dimensions, 6 open decisions | ingested: 2026-04-22
 - [[wiki/sources/2026-core-business-entities]] — Full data entity catalog: 32 entities across lead lifecycle, governance, and operational observability | ingested: 2026-04-22
+- [[wiki/sources/2026-b2c-data-acquisition]] — B2C data acquisition strategy: 4-method hierarchy (official APIs → webhooks → CSV upload → no scraping); tenant data boundary; LLM-assisted CSV mapping | ingested: 2026-05-16
+- [[wiki/sources/2026-lead-ingestion-strategy]] — Phase 0 lead ingestion: 4 sources (email, WhatsApp, Instagram, Sheets), two-stage filtering, normalization, deduplication, intake event log, classifier feedback | ingested: 2026-05-16
 
 ---
 
@@ -35,7 +37,10 @@ source_count: 3
 
 ## Concepts
 
-- [[wiki/concepts/lead-pipeline-architecture]] — Two-pipeline architecture; Pipeline 2 onboarding, Pipeline 1 per-lead; serial build order | sources: 1
+- [[wiki/concepts/lead-ingestion-sources]] — 4-source Phase 0 ingestion (email, WhatsApp, Instagram, Sheets); normalization, deduplication, immutable intake log, classifier feedback | sources: 2
+- [[wiki/concepts/two-stage-lead-filtering]] — Rule filter (~30–40% eliminated) + LLM classification (LEAD/EXISTING_CUSTOMER/NOISE/UNCLEAR); upstream of Pipeline 1 on DM paths | sources: 1
+- [[wiki/concepts/b2c-data-acquisition]] — 4-method B2C historical data acquisition; API-first hierarchy; no-scraping hard policy; LLM-assisted CSV mapping | sources: 1
+- [[wiki/concepts/lead-pipeline-architecture]] — Two-pipeline architecture; Pipeline 2 onboarding, Pipeline 1 per-lead; serial build order | sources: 3
 - [[wiki/concepts/intelligence-layer]] — 4-component internal pipeline (Persona Engine → Prompt Layer → Rating Agent → Output Schema Layer); score_lead() interface; 60s timeout | sources: 1
 - [[wiki/concepts/signal-types]] — 5 scoring dimensions: Fit 25%, Intent 25%, Engagement 20%, Behaviour 20%, Context 10%; backed by signal + signal_evaluation entities | sources: 2
 - [[wiki/concepts/data-entity-model]] — 32 entities in 3 groups: core lead lifecycle, governance & quality, operational observability | sources: 1
@@ -53,6 +58,15 @@ source_count: 3
 ---
 
 ## Analyses
+
+- [[wiki/analyses/context-construction-specification]] — How the full LLM context is assembled for each Rating Agent call: ownership (Orchestrator vs Prompt Layer), static/dynamic split, signal ordering, pre-send validation gate, tenant isolation, token budgets, PersonaObject freshness, versioning | date: 2026-05-18 | status: COMPLETE
+- [[wiki/analyses/prompt-orchestration-framework]] — Prompt template versioning, prompt_registry data model, version lifecycle (draft→active→deprecated), runtime selection, rollback, multi-tenant scoping, MAJOR version backward-compatibility, template generation automation | date: 2026-05-18 | status: COMPLETE
+- [[wiki/analyses/llm-io-contract]] — Strict machine-consumable LLM I/O contracts for Rating Agent: INPUT_SCHEMA, OUTPUT_SCHEMA, VALIDATION_RULES including cross-field rules, retry policy, ScoringFailure fallback, Output Schema Layer augmentation | date: 2026-05-05 | updated: 2026-05-18 | status: COMPLETE (v1.1.0)
+- [[wiki/analyses/adaptive-scoring-strategy-b2b-b2c]] — How scoring adapts for B2B vs B2C: business_type as hard mode selector, signal applicability enforcement, mode-specific weights/ICP/completeness/disqualification/thresholds/enrichment steps | date: 2026-05-18 | status: COMPLETE
+- [[wiki/analyses/prompt-evaluation-framework]] — Pre-deployment prompt evaluation: 6 evaluation dimensions, golden test set (10 required categories), automated thresholds, team lead review procedure, regression detection, instruction-following checks, online monitoring early-warning signals | date: 2026-05-18 | status: COMPLETE
+- [[wiki/analyses/persona-classification-framework]] — PersonaObject full schema, IcpDefinition by mode, persona quality criteria, signal coverage minimums, custom_rules format, tone field spec, inference confidence flags, persona change classification, staleness detection, how personas drive lead classification | date: 2026-05-18 | status: COMPLETE
+- [[wiki/analyses/enrichment-tools-integration]] — 5-tool integration spec: Surepass (Indian govt verification gateway), Probe42 (Indian company intelligence), Tracxn (startup funding/stage data), NewsCatcherAPI (news signals), Serper.dev (Google search fallback); WHY/HOW/WHERE/WHEN per tool; full Source Registry YAML; NormalisedEvent field expansion; updated cost model | date: 2026-05-16 | status: COMPLETE
+- [[wiki/analyses/inngest-function-design]] — 8 Inngest functions for Pipeline 2, Pipeline 1, and governance background jobs; per-tenant concurrency, step.waitForEvent for clarification timeout, quality_snapshots read rule | date: 2026-05-13 | status: COMPLETE
 
 - [[wiki/analyses/scoring-quality-metrics]] — Combined scoring quality metrics document; Score Coverage Rate + Accuracy Proxy (AP1–AP4) + Consistency (C1–C5) + Action Relevance (AR1–AR5) | date: 2026-04-17 | status: complete
 - [[wiki/analyses/action-relevance-metrics]] — Action relevance metric group card; AR1 SLA Compliance, AR2 Action Rate by Bucket, AR3 Time-to-Action Distribution, AR4 Action Type Distribution, AR5 Salesperson Priority Alignment | date: 2026-04-17 | status: complete
