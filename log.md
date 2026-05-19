@@ -4,7 +4,46 @@
 
 ---
 
-## [2026-05-20] fix | FIX-010 — Create Enrichment-to-LLM Field Map
+## [2026-05-20] analysis | Dev Environment Requirements
+
+- File created: wiki/analyses/dev-environment-requirements.md
+- Question answered: What services, environment variables, and capabilities does a developer need to run the Lead Intelligence Engine locally?
+- Sections: Services Required (core/external/enrichment/channel), Environment Variables (all 40+ vars across LLM, Clerk, DB, encryption, Inngest, Meta, enrichment, AWS, app, feature flags), Capability Checklist (12 verifiable items), Setup Instructions Template skeleton
+- Key locked decisions documented: Python 3.12 + FastAPI, uv, Anthropic Claude Sonnet 4.6, LiteLLM, Clerk, AWS Secrets Manager, AWS CloudWatch, AWS ECS Fargate
+- Key deferred decisions flagged: Postgres hosting (Aurora vs EC2), workflow orchestration (Inngest vs Temporal), real-time delivery (Pusher vs Soketi)
+- Sources: security-planning, inngest-function-design, tech-stack-research, lead-enrichment-architecture, meta-integration-implementation, orchestration-layer-spec
+- index.md updated
+
+---
+
+## [2026-05-20] analysis | API Contract
+
+- File created: wiki/analyses/api-contract.md
+- Question answered: What are the complete REST API endpoints for the Lead Intelligence Engine — method, path, roles, request/response shapes?
+- Sections: 10 endpoint groups (Tenant & Onboarding, Lead Ingestion, Pipeline & Orchestration, Scoring & Lead Cards, Configuration, Webhooks Inbound, Delivery & Notifications, Human Review, Admin, Feedback & Quality); Conventions (base URL, auth, pagination, error shapes, async patterns); Role permission summary
+- Format: OpenAPI-convention structured markdown; globally readable, importable to Swagger/Postman
+- Key endpoints: POST /v1/onboarding/business-profile (async Pipeline 2 trigger), GET /v1/leads/{id}/card (salesperson view), POST /v1/webhooks/meta/{channel} (public HMAC-validated), GET /v1/admin/leads/{id}/lineage (Month 2 admin feature)
+- Sources: service-boundaries, orchestration-layer-spec, security-planning, delivery-integration-layer, onboarding-flow-readiness, governance-observability-layer
+- index.md updated
+
+---
+
+## [2026-05-20] analysis | Test Strategy
+
+- File created: wiki/analyses/test-strategy.md
+- Question answered: What is the test strategy for the Lead Intelligence Engine — what is tested, at what layer, and what gates a PR or merge to main?
+- Sections: Philosophy, Test Pyramid (Unit/Integration/E2E), LLM Evaluation Suite, CI/CD Gates, Coverage Expectations per Service, Test Data & Fixtures, Caveats & Gaps
+- Unit test scope: 15 components including all 13 signal extractors (100% coverage), Output Schema Layer (100%), lineage write sequence, prompt template fill, intent gate routing
+- Integration test scope: 15 scenarios including enrichment mocks, pipeline stage transitions, JWT+RLS validation, crash recovery, HMAC validation
+- E2E golden paths: (1) HOT B2B — score ≥80, bucket=hot, 120s SLA; (2) COLD SMB — needs_review=true, pipeline_stage=human_review; (3) NOISE — insufficient_signal, zero enrichment calls
+- LLM eval triggered on: prompt change, signal change, model version change, I/O contract version change
+- CI/CD gates: PR blocks on unit+integration; merge to main blocks on full suite + all 3 E2E paths + LLM eval
+- Sources: execution-type-classification, scoring-quality-metrics, core-use-cases, llm-io-contract, prompt-template-framework
+- index.md updated
+
+---
+
+## [2026-05-20] fix | FIX-010 — Create Enrichment-to-LLM Field Map — Create Enrichment-to-LLM Field Map
 
 - Fix: FIX-010 [P2 | MAJOR | Epic 0.9]
 - Files created:
