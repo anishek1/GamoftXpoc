@@ -23,9 +23,9 @@ status: COMPLETE — supersedes India-specific provider stack in lead-enrichment
 
 **Why this exists:** A lead is not just a name and phone number. Before the AI can score how likely someone is to buy, it needs to know who they are (their role, their company, their seniority), what their company is (its size, industry, financial status), and what they actually want. This document defines how the system gathers all of that information — from a minimal initial contact — using official government databases, licensed commercial APIs, and one lightweight AI call. No website scraping; only legal data sources.
 
-**Where it fits:** This is Pipeline 1, Steps 0 through 12 — the enrichment phase that runs before the Scoring Agent (Step 13). Every lead goes through some or all of these steps before receiving a score. The pipeline handles leads from any country and any channel (WhatsApp, Instagram, Facebook, LinkedIn), with different data sources activated depending on where the lead is from and whether they're a business buyer or an individual consumer.
+**Where it fits:** This is Pipeline 1, Steps 1 through 13 — the enrichment phase that runs before the Scoring Agent (Step 13). Every lead goes through some or all of these steps before receiving a score. The pipeline handles leads from any country and any channel (WhatsApp, Instagram, Facebook, LinkedIn), with different data sources activated depending on where the lead is from and whether they're a business buyer or an individual consumer.
 
-**How it works:** A 13-step pipeline takes a raw incoming message and builds a complete lead profile. The first three steps (filter noise, parse the message with a cheap AI call, classify B2B vs B2C) happen for free in milliseconds. Then the system identifies the country, checks account history, routes to the right company and person lookup APIs for that jurisdiction, handles location ambiguity, checks consent and intent, and finally hands a fully enriched lead to the Scoring Agent. A key design choice — the Source Registry pattern — means data sources are stored in a config file rather than in code, so adding support for a new country requires no redeployment.
+**How it works:** A 13-step pipeline takes a raw incoming message and builds a complete lead profile. The first step is a cheap Haiku LLM call that simultaneously judges whether the message is worth processing and extracts all structured fields — if the message has no useful signal, the pipeline stops here and no enrichment APIs are called. The second step classifies B2B vs B2C for free. Then the system identifies the country, checks account history, routes to the right company and person lookup APIs for that jurisdiction, handles location ambiguity, checks consent and intent, and finally hands a fully enriched lead to the Scoring Agent. A key design choice — the Source Registry pattern — means data sources are stored in a config file rather than in code, so adding support for a new country requires no redeployment.
 
 ---
 
@@ -62,13 +62,13 @@ The reason Haiku is needed here is simple: real messages from real people contai
 Message arrives on channel (WhatsApp / Instagram / LinkedIn)
               │
     ┌─────────▼──────────┐
-    │   Pre-Filter Gate  │  ← Is this even a real message?
+    │ Conversation Thread│  ← New lead or reply? (free, DB lookup by thread ID)
     └─────────┬──────────┘
-              │ real message
+              │ raw message / combined context ready
     ┌─────────▼──────────┐
-    │   Message Parser   │  ← What did they say? (Haiku LLM)
+    │   Message Parser   │  ← Worth processing? What did they say? (Haiku LLM)
     └─────────┬──────────┘
-              │ structured data
+              │ proceed = true
     ┌─────────▼──────────┐
     │  Free Signal Score │  ← B2B or B2C? (free, no API)
     └─────────┬──────────┘
@@ -81,10 +81,6 @@ Message arrives on channel (WhatsApp / Instagram / LinkedIn)
     │  Account Graph     │  ← Has this company contacted us before?
     └─────────┬──────────┘
               │
-    ┌─────────▼──────────┐
-    │ Conversation Thread│  ← Is this a reply to an existing lead?
-    └─────────┬──────────┘
-              │ new lead
     ┌─────────▼──────────┐
     │   Company Cache    │  ← Have we looked up this company recently?
     └─────────┬──────────┘
@@ -128,27 +124,40 @@ Message arrives on channel (WhatsApp / Instagram / LinkedIn)
 
 ---
 
-### Step 0 — Pre-Filter Gate
+### Step 1 — Conversation Thread Check
 
-**What it does:** Before touching any API or LLM, the system checks whether this is even a real message worth processing.
+**What it does:** Checks whether this message is a fresh lead or a reply to an existing conversation. This runs before the Message Parser because it determines what context Haiku receives — a single new message, or the full combined thread.
 
-**What gets filtered out:**
-- Messages with fewer than 10 characters ("hi", "ok", "?", "👋")
-- Messages that are only emojis or punctuation
-- Repeated identical messages (spam)
-- Known bot patterns
+**How it checks the database:** Uses the channel thread identifier already present in the `NormalisedChannelEvent` — no parsed data needed:
 
-**Why this matters:** Without this gate, someone sending "hello" would trigger the Message Parser, the Signal Scorer, and potentially an Apollo API call — wasting money on nothing.
+| Channel | Thread identifier |
+|---|---|
+| WhatsApp | `sender_wa_id` |
+| Instagram | `sender_igsid` |
+| Facebook Messenger | `sender_psid` |
 
-**Cost:** Zero. Pure code logic. Runs in milliseconds.
+```sql
+SELECT lead_id, messages
+FROM conversations
+WHERE tenant_id = :tenant_id
+  AND channel_thread_id = :thread_identifier
+```
+
+**The problem it solves:** When the system sends an automated follow-up ("Hi Aishekh, what specifically are you looking for?") and Aishekh replies, that reply arrives as a new incoming message on the same thread. Without this check, the system would create a second lead record — and Haiku would see only the reply ("yes by June, 500 licenses") without the original message, making extraction unreliable and potentially triggering a second Apollo call for the same person.
+
+**How it works:**
+- Message on an existing thread → load original messages + new message as combined context → pass to Step 2 (Message Parser). One Haiku call parses the full thread.
+- Message on a new thread → pass raw message to Step 2 as normal.
+
+**Cost:** Database lookup. Free.
 
 ---
 
-### Step 1 — Message Parser (Haiku LLM Call)
+### Step 2 — Message Parser (Haiku LLM Call)
 
-**What it does:** Reads the raw message and pulls out structured information — who the person is, what company they mentioned, what role they have, where they are, and what they seem to want.
+**What it does:** Two things in a single call. First, it judges whether the message contains enough signal to be worth processing at all. Second, if it does, it extracts structured information — who the person is, what company they mentioned, what role they have, where they are, and what they seem to want.
 
-**Why a small LLM and not code?** Real messages are messy. People write in Hinglish, make spelling mistakes, use informal language, and don't follow any template. A lightweight LLM handles all of this far better than any rule-based approach.
+**Why Haiku and not code?** Real messages are messy. People write in Hinglish, make spelling mistakes, use informal language, and don't follow any template. A character-count check cannot tell the difference between "interested in bulk order" and "ok noted thanks." Haiku reads the actual content and makes an intelligent judgment.
 
 **What comes out:**
 ```
@@ -159,13 +168,22 @@ location_mentioned:    "Lucknow"
 intent_text:           "I want to buy something"
 business_ownership:    false  ← did they say "I run a business"?
 language_detected:     "en"
+proceed:               true
+discard_reason:        null
 ```
 
-**What the Message Parser is NOT doing:** It is not scoring the lead. It is not deciding if the lead is good or bad. It is only extracting raw facts from the message text.
+**If the message has no useful signal** (e.g. "hi", "ok", "hello sir please call me", emojis only, misdirected replies):
+```
+proceed:               false
+discard_reason:        "no extractable signal — message contains no identifiable name, company, role, or intent"
+```
+→ Pipeline stops here. No enrichment APIs are called. Lead is logged as `insufficient_signal`.
+
+**What the Message Parser is NOT doing:** It is not scoring the lead. It is not deciding if the lead is a good or bad prospect. It is only judging whether the message is processable and extracting raw facts from it.
 
 ---
 
-### Step 2 — Free Signal Scorer
+### Step 3 — Free Signal Scorer
 
 **What it does:** Uses what the Message Parser extracted to make a first guess about whether this is a B2B lead (business buying from a business) or a B2C lead (individual buying for personal use).
 
@@ -190,7 +208,7 @@ language_detected:     "en"
 
 ---
 
-### Step 3 — Jurisdiction Classifier
+### Step 4 — Jurisdiction Classifier
 
 **What it does:** Figures out which country this lead is from. This determines which data sources the system will use to look them up.
 
@@ -206,7 +224,7 @@ language_detected:     "en"
 
 ---
 
-### Step 4 — Account Graph Check
+### Step 5 — Account Graph Check
 
 **What it does:** Before looking up any new data, the system checks if other people from the same company have already contacted the tenant.
 
@@ -224,24 +242,6 @@ account_engagement:
 If `leads_this_month > 1`, this gets injected into the Scoring Agent's context so it can factor in account-level buying intent, not just individual message intent.
 
 **Cost:** Simple database query. Free.
-
----
-
-### Step 5 — Conversation Thread Check
-
-**What it does:** Checks whether this message is a fresh lead or a reply to an existing conversation.
-
-**The problem it solves:** When the system sends an automated follow-up ("Hi Aishekh, what specifically are you looking for?") and Aishekh replies, that reply will arrive as a new incoming message. Without this check, the system would create a second lead record for the same person — losing the connection to the original.
-
-**How it works:**
-- Every lead is stored with a `conversation_id` tied to the channel thread (WhatsApp thread, Instagram DM thread, etc.)
-- Incoming message on an existing thread → appended to the original lead record
-- Pipeline re-runs with the full combined context: original message + follow-up reply
-- Score upgrades if the new message contains clearer intent
-
-**If it's a new thread:** Continue the pipeline normally.
-
-**Cost:** Database lookup. Free.
 
 ---
 
@@ -478,8 +478,6 @@ Apollo is the global spine. It covers enough ground that for most leads in most 
 
 ---
 
-**Pre-Filter:** Message is 71 characters, contains meaningful words → passes.
-
 **Message Parser (Haiku):**
 ```
 name: "Aishekh Prasad"
@@ -488,6 +486,8 @@ role: "CTO"
 location_mentioned: "Lucknow"
 intent_text: "I want to buy something"
 business_ownership: false
+proceed: true
+discard_reason: null
 ```
 
 **Free Signal Scorer:**
@@ -556,9 +556,7 @@ identity_verified: true
 
 ---
 
-**Pre-Filter:** Passes.
-
-**Message Parser:**
+**Message Parser (Haiku):**
 ```
 name: "Sunita Sharma"
 company: null   ← no company name stated
@@ -566,6 +564,8 @@ role: null
 location_mentioned: "Lucknow"
 intent_text: "want to order supplies in bulk"
 business_ownership: true   ← "I run a small catering business"
+proceed: true
+discard_reason: null
 ```
 
 **Free Signal Scorer:**
@@ -623,9 +623,7 @@ note: "Ask for GST number or business name in conversation to improve score"
 
 ---
 
-**Pre-Filter:** Passes. 52 characters, meaningful content.
-
-**Message Parser (Haiku):** This is where the LLM earns its place. A regex-based parser would miss "inmobi se bol raha hu" entirely. Haiku, which is multilingual, reads the Hindi and extracts:
+**Message Parser (Haiku):** This is where Haiku earns its place. A regex-based parser would miss "inmobi se bol raha hu" entirely and would likely judge this message as noise. Haiku, which is multilingual, reads the Hindi, recognises the signal, and extracts:
 ```
 name: null   ← not mentioned
 company: "InMobi"
@@ -633,9 +631,11 @@ role: "CTO"
 location_mentioned: null
 intent_text: "wanted to buy something"
 language_detected: "hi"
+proceed: true
+discard_reason: null
 ```
 
-Without Haiku, this message would have returned empty extraction → lead classified as noise → discarded. A real high-value lead lost.
+A dumb character-count gate would have let this through but returned empty fields — burning an Apollo call on nothing. Haiku reads the actual content and correctly returns `proceed: true` with the extracted company and role.
 
 **Rest of pipeline:** Continues identically to Scenario 1 once the structured data is extracted. The language of the original message does not matter after the parsing step.
 
@@ -652,9 +652,7 @@ Without Haiku, this message would have returned empty extraction → lead classi
 
 ---
 
-**Pre-Filter:** Passes.
-
-**Message Parser:**
+**Message Parser (Haiku):**
 ```
 name: "James Whitfield"
 company: "Barclays"
@@ -662,6 +660,8 @@ role: "CTO"
 location_mentioned: null
 intent_text: "evaluating enterprise vendors, want pricing and technical specs"
 business_ownership: false
+proceed: true
+discard_reason: null
 ```
 
 **Free Signal Scorer:**
@@ -768,13 +768,16 @@ The pipeline does not have a single entry point. There are two, depending on how
 ```
 DM Event (WhatsApp / Instagram / Facebook Messenger)
   → Webhook Worker produces NormalisedChannelEvent
-  → Enters at Step 0 (Pre-Filter Gate)
-  → Full pipeline runs, including Message Parser (Haiku)
+  → Enters at Step 1 (Conversation Thread Check)
+  → Thread Check uses channel thread ID (wa_id / igsid / psid) — no parsing needed
+  → Passes raw message or combined thread context to Step 2 (Message Parser / Haiku)
+  → Haiku judges proceed = true/false, extracts structured fields
+  → Full pipeline runs from Step 3 onward if proceed = true
 
 Lead Ad Event (Facebook Lead Ads / Instagram Lead Ads)
   → Webhook Worker + Lead Retrieval Worker produce NormalisedChannelEvent
-  → SKIPS Steps 0, 1, 2 (Pre-Filter, Message Parser, Free Signal Scorer)
-  → Enters at Step 3 (Jurisdiction Classifier) with pre-structured fields
+  → SKIPS Steps 1, 2, 3 (Conversation Thread Check, Message Parser, Free Signal Scorer)
+  → Enters at Step 4 (Jurisdiction Classifier) with pre-structured fields
 ```
 
 Lead Ads skip the first three steps because the form data already provides structured `name`, `email`, `phone`, `company_name`, and `job_title`. There is no raw message to filter or parse, and B2B/B2C classification can be determined directly from the presence or absence of `company_name` in the form response.
@@ -830,14 +833,14 @@ When `event_type = "lead_ad"`, the following fields from `lead_form_fields` feed
 
 | Form field | Pipeline step it feeds | How |
 |---|---|---|
-| `phone` | Step 3 (Jurisdiction Classifier) | `libphonenumber(phone)` → `country_code` |
+| `phone` | Step 4 (Jurisdiction Classifier) | `libphonenumber(phone)` → `country_code` |
 | `company_name` | Step 7 (Company Disambiguator) | Primary search key |
 | `phone` or `email` | Step 9 (Person Resolver) | Apollo.io primary search key |
 | `full_name` | Step 9 (Person Resolver) | Seeds Apollo name search |
 | `job_title` | Step 9 output | Seeded directly; no lookup needed for role |
 | `company_name` presence | B2B/B2C determination | `company_name` present → B2B; absent → B2C path |
 
-For Lead Ad events, the Free Signal Scorer (Step 2) is replaced by this direct field check. The Message Parser (Step 1) is skipped entirely.
+For Lead Ad events, the Free Signal Scorer (Step 3) is replaced by this direct field check. Steps 1, 2, and 3 (Thread Check, Message Parser, Signal Scorer) are skipped entirely.
 
 ---
 
@@ -845,7 +848,7 @@ For Lead Ad events, the Free Signal Scorer (Step 2) is replaced by this direct f
 
 Instagram plays two distinct roles in this pipeline:
 
-**Role 1 — Channel:** Instagram DMs and Lead Ads arrive via the Meta webhook (`object: "instagram"`). The NormalisedChannelEvent `channel = "instagram"` tells the pipeline that the lead originated from Instagram. This happens before Step 0.
+**Role 1 — Channel:** Instagram DMs and Lead Ads arrive via the Meta webhook (`object: "instagram"`). The NormalisedChannelEvent `channel = "instagram"` tells the pipeline that the lead originated from Instagram. This happens before Step 1 — it is channel metadata, not a pipeline step.
 
 **Role 2 — Enrichment source at Step 9 (Person Resolver):** When `channel = "instagram"` AND `sender_igsid` is present, the Instagram User Profile API is called before Apollo.io:
 
@@ -872,7 +875,7 @@ GET /{sender_psid}
    &access_token={page_access_token}
 ```
 
-This seeds `full_name` for the Apollo.io person search. If the call returns null fields (strict privacy settings), Step 9 proceeds with Apollo using whatever name the lead provided in their message (extracted by the Message Parser at Step 1).
+This seeds `full_name` for the Apollo.io person search. If the call returns null fields (strict privacy settings), Step 9 proceeds with Apollo using whatever name the lead provided in their message (extracted by the Message Parser at Step 2).
 
 ---
 
@@ -895,12 +898,11 @@ For India WhatsApp leads, Truecaller for Business is also called using the phone
 
 | Step | DM path trigger | Lead Ad path trigger | API called | Cost |
 |---|---|---|---|---|
-| Step 0 (Pre-Filter) | Every DM | Skipped | None — code logic | Free |
-| Step 1 (Message Parser) | DM only | Skipped | Claude Haiku LLM | ~$0.001 |
-| Step 2 (Signal Scorer) | DM only | Skipped; replaced by field check | None — code logic | Free |
-| Step 3 (Jurisdiction) | Every event | Every event | `libphonenumber` (local lib) | Free |
-| Step 4 (Account Graph) | Every event | Every event | PostgreSQL query | Free |
-| Step 5 (Thread Check) | DM only | Skipped | PostgreSQL query | Free |
+| Step 1 (Thread Check) | DM only | Skipped | PostgreSQL query (thread ID lookup) | Free |
+| Step 2 (Message Parser) | DM only | Skipped | Claude Haiku LLM (proceed judgment + extraction) | ~$0.001 |
+| Step 3 (Signal Scorer) | DM only (proceed = true) | Skipped; replaced by field check | None — code logic | Free |
+| Step 4 (Jurisdiction) | Every event | Every event | `libphonenumber` (local lib) | Free |
+| Step 5 (Account Graph) | Every event | Every event | PostgreSQL query | Free |
 | Step 6 (Company Cache) | B2B events only | B2B events only | Redis / PostgreSQL | Free |
 | Step 7 (Company Disambiguator) | Cache miss + B2B | Cache miss + B2B | Apollo.io API | ~$0.01–0.03 |
 | Step 8 (Company Resolver) | After Disambiguator | After Disambiguator | See registry table below | Varies |
@@ -953,7 +955,7 @@ Return HTTP 200
 NormalisedChannelEvent is written to the event_queue
 Pipeline 1 is triggered with event_type + channel metadata
     ↓
-Step 0 (DM path) or Step 3 (Lead Ad path) — Pipeline 1 begins
+Step 1 (DM path) or Step 4 (Lead Ad path) — Pipeline 1 begins
 ```
 
 Everything above the boundary is the Meta integration layer ([[analyses/meta-integration-implementation]]). Everything at and below the boundary is this document. The NormalisedChannelEvent schema (Section 14.2) is the contract between the two layers. Neither layer should assume knowledge of the other's internals beyond this schema.
