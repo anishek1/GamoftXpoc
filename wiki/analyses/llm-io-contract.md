@@ -42,6 +42,7 @@ status: COMPLETE
 | Signal value types | Described in prose | Discriminated union per signal class | Prevents type confusion between `false` (detected, negative) and `"not_detected"` (not evaluated) |
 | `confidence` (legacy term) | Used in intelligence layer design doc | `lead_completeness` in this contract | RESOLVED 2026-04-22: this is data completeness, not LLM self-confidence (see [[concepts/confidence-first-class]]) |
 | `context_inputs` | Required with nullable fields | Optional object; nullable fields removed from `required` | Fields that must be null for `variant=new` must not be in `required` — contradiction resolved |
+| `tone`, `custom_rules` | Present in PersonaObject, absent from persona input | Added as optional fields to `persona` object | Both are produced by the Persona Agent and must be visible to the Rating Agent: `custom_rules` override the scoring rubric for tenant-specific cases; `tone` controls the `salesperson_note` communication register. Silently omitting them meant stored tenant configuration was never enforced. |
 
 ---
 
@@ -147,7 +148,9 @@ status: COMPLETE
         },
         "hot_min":        { "type": "integer", "minimum": 1, "maximum": 100 },
         "warm_min":       { "type": "integer", "minimum": 1, "maximum": 100 },
-        "persona_version": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$" }
+        "persona_version": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$" },
+        "tone":           { "type": ["string", "null"], "maxLength": 200, "description": "Preferred communication register for the salesperson_note output (e.g., 'consultative', 'direct', 'warm'). Null if the tenant did not specify. The Rating Agent must match this register when writing salesperson_note." },
+        "custom_rules":   { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 5, "maxLength": 300 }, "description": "Tenant-specific scoring rules the Rating Agent must apply before returning a score (e.g., 'Never assign HOT if lead is from a competitor domain'). Empty array if no custom rules are defined." }
       }
     },
     "behavior": {

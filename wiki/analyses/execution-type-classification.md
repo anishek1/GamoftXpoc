@@ -81,7 +81,7 @@ Three execution types. Every workflow step maps to exactly one.
 | # | Step | Execution Type | Notes |
 |---|---|---|---|
 | G-1 | Lineage Writes | AUTOMATION | pipeline_run + task_execution + lineage_record; written by orchestrator after every stage |
-| G-2 | SLA Tracker | AUTOMATION | Time-based: HOT 24h, WARM 2-3d, COLD weekly; breach → alert |
+| G-2 | SLA Tracker | AUTOMATION | Time-based: HOT 24h, WARM 48h, COLD weekly; breach → alert |
 | G-3 | Score Decay Job | AUTOMATION | Scheduled: −10 pts/7d, −20 pts/14d, auto-COLD/30d |
 | G-4 | Feedback Collector | AUTOMATION | Ingests thumbs up/down, outcomes, CRM status updates |
 | G-5 | Quality Metrics — Per-Run SQL | AUTOMATION | Score Coverage, completeness distribution, bucket distribution, failure rates |
@@ -438,7 +438,7 @@ Reads the final score (after disqualification adjustments) and assigns a bucket:
 | Bucket | Score range | SLA |
 |---|---|---|
 | HOT | 80–100 | 24 hours |
-| WARM | 55–79 | 2–3 days |
+| WARM | 55–79 | 48 hours |
 | COLD | 0–54 | Weekly nurture |
 
 Thresholds are tenant-configurable starting points (80/55/0). Pure threshold comparison — no reasoning.
@@ -483,7 +483,7 @@ Lineage is the foundation for the entire quality metrics system. All 15 quality 
 
 #### G-2 — SLA Tracker `AUTOMATION`
 
-Background job. Monitors time elapsed since `pipeline_stage = 'delivered'` for each lead. On breach: dispatches alert to team lead (channel TBD). SLA windows: HOT 24h, WARM 2-3d, COLD weekly.
+Background job. Monitors time elapsed since `pipeline_stage = 'delivered'` for each lead. On breach: dispatches alert to team lead (channel TBD). SLA windows: HOT 24h, WARM 48h, COLD weekly.
 
 ---
 

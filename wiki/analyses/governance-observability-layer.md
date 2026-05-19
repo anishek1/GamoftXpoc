@@ -507,7 +507,7 @@ CREATE TABLE quality_snapshots (
 
 | Metric ID | Metric | What is computed |
 |---|---|---|
-| AR1 | SLA Compliance Rate | % HOT leads contacted within 24h, WARM within 2-3d |
+| AR1 | SLA Compliance Rate | % HOT leads contacted within 24h, WARM within 48h |
 | AR2 | Action Rate by Bucket | % leads per bucket with recorded action taken |
 | AR3 | Time-to-Action Distribution | Distribution of hours from delivery to first action |
 | AR4 | Action Type by Bucket | Breakdown of action types (call, WhatsApp, email) per bucket |

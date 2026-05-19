@@ -115,14 +115,15 @@ Every pipeline starts from the orchestrator. Every tool is called by the orchest
    - **Channel Integration Layer** (upstream of Pipeline 1) — how tenant platforms connect to the system and how lead events enter Pipeline 1. WhatsApp DMs, Meta Lead Ads, LinkedIn, and website forms all enter here via OAuth and webhooks. Documented in [[analyses/channel-integration-layer]].
    - **Delivery and Integration Layer** (downstream of Pipeline 1, post-Bucketize) — how scored leads are delivered to salespeople, CRM systems, dashboards, and external APIs. Documented in [[analyses/delivery-integration-layer]].
 
-**There are 4 LLM agents in the entire system:**
+**There are 5 LLM agents in the entire system:**
 
-| Agent | Pipeline | What it does |
-|---|---|---|
-| Onboarding Agent | Pipeline 2 | Converts tenant business info into a structured persona |
-| ICP Agent | Pipeline 2 | Defines what the ideal customer looks like for this tenant |
-| Signal Agent | Pipeline 2 | Creates the signal definitions used to evaluate every lead |
-| Scoring Agent | Pipeline 1 | Scores each lead using the signal values extracted from enrichment |
+| Agent | Pipeline | Model | When it runs |
+|---|---|---|---|
+| Onboarding Agent | Pipeline 2 | Sonnet | Once at tenant onboarding |
+| ICP Agent | Pipeline 2 | Sonnet | Once at tenant onboarding |
+| Signal Agent | Pipeline 2 | Sonnet | Once at tenant onboarding |
+| Scoring Agent | Pipeline 1 | Sonnet | Every lead, every path |
+| Message Parser | Pipeline 1 | Haiku | Every lead on DM path only — Lead Ad events skip this step |
 
 **LLM calls per lead — revised 2026-05-03:** The Scoring Agent (Sonnet) runs for every lead on both paths. On the DM path only, a second LLM call occurs earlier in the pipeline: the Message Parser (Haiku), which performs multilingual and typo-tolerant extraction from raw message text before signal extraction. Lead Ad events skip the Message Parser entirely and use only the Scoring Agent call. The three Pipeline 2 agents run once at onboarding. Signal extraction remains deterministic in all paths. Full detail: [[analyses/global-data-collection-architecture]] Sections 5 and 14.
 
@@ -204,15 +205,15 @@ Stored in: `ideal_customer_profile` table (S1)
 
 Using both the persona and ICP, the Signal Agent creates the full list of signals across five dimensions:
 
-| Dimension | Illustrative weight | What it captures |
+| Dimension | Default weight | What it captures |
 |---|---|---|
-| Fit | ~25% | Industry match, role match, serviceability, company size |
-| Intent | ~30% | Price requests, demo requests, urgency language, timeline stated |
-| Engagement | ~20% | Response speed, revisit count, multi-channel contact |
-| Behaviour | ~15% | Past orders, prior proposals, payment patterns |
-| Context | ~10% | Location, city tier, seasonality, external triggers |
+| Fit | 25% | Industry match, role match, serviceability, company size |
+| Intent | 25% | Price requests, demo requests, urgency language, timeline stated |
+| Engagement | 20% | Response speed, revisit count, multi-channel contact |
+| Behaviour | 20% | Past orders, prior proposals, payment patterns |
+| Context | 10% | Location, city tier, seasonality, external triggers |
 
-Weights are per-tenant and configurable. These are illustrative starting points from the playbook.
+Weights are per-tenant and configurable. These are the locked default starting points (25/25/20/20/10 = 100%) — see Section 11 Confirmed Decisions. Per-tenant overrides are applied via `tenant_config.scoring_weights`.
 
 Each signal is stored as:
 
@@ -549,7 +550,7 @@ Deterministic. The orchestrator reads `total_score` and assigns a bucket:
 | Bucket | Score range | Contact SLA |
 |---|---|---|
 | HOT | 80–100 | Salesperson must contact within 24 hours |
-| WARM | 55–79 | Contact within 2–3 days |
+| WARM | 55–79 | Contact within 48 hours |
 | COLD | 0–54 | Weekly nurture or archive |
 
 Thresholds are tenant-configurable starting points. They will be calibrated after Month 1 data using the AP1 and AP2 quality metrics.
@@ -615,8 +616,9 @@ This diagram shows the full lifecycle: how raw pipeline events become quality me
                          │
                          ▼
         ┌─────────────────────────────────────────┐
-        │               pipeline_log               │
-        │  confidence · dimension_scores           │
+        │   pipeline_run / task_execution /         │
+        │   lineage_record                          │
+        │  lead_completeness · dimension_scores     │
         │  prompt_version · signal_version         │
         │  fired_signals · pipeline_stage          │
         │  run_id · lead_id · tenant_id            │
@@ -779,6 +781,37 @@ Does a prompt_template exist for this tenant and use case?
 10. Hand off to Delivery and Integration Layer — ranked lead cards delivered in chat (HOT leads pushed immediately), HOT/WARM leads pushed to CRM, notifications dispatched. See [[analyses/delivery-integration-layer]].
 ```
 
+#### Feature Flag Enforcement
+
+`tenant_config.feature_flags` is loaded in step 2 as part of the tenant configuration batch. Before each enrichment provider call in step 6a, the orchestrator evaluates the corresponding flag. An absent key is treated as disabled.
+
+| Flag key | Controls |
+|---|---|
+| `enrichment.truecaller` | Truecaller phone identity lookup |
+| `enrichment.google_places` | Google Places location lookup |
+| `enrichment.surepass` | Surepass GSTN/CIN/PAN verification (B2B only) |
+| `enrichment.apollo` | Apollo.io company intelligence and email enrichment (B2B only) |
+| `enrichment.probe42` | Probe42 Indian SMB financials (B2B only) |
+| `enrichment.tracxn` | Tracxn startup funding stage (B2B only) |
+| `enrichment.newscatcher` | NewsCatcherAPI company news signals (B2B only) |
+| `enrichment.serper` | Serper.dev Google Search fallback (B2B only) |
+| `enrichment.indiamart` | IndiaMART / JustDial SMB discovery (B2B only) |
+
+**Enforcement logic (step 6a):**
+
+```python
+for provider in enrichment_registry:
+    flag_key = f"enrichment.{provider.key}"
+    if not tenant_config.feature_flags.get(flag_key, False):
+        continue  # disabled for this tenant — skip, record signals as not_detected
+    result = await provider.enrich(lead)
+    signal_values.update(result)
+```
+
+**Effect on lead_completeness:** Signals from disabled providers are recorded as `not_detected`. The `lead_completeness` float is calculated over all signals in the tenant's signal registry, so disabled providers reduce completeness proportionally to their signal share.
+
+**Configuration:** Feature flags are set during tenant onboarding (Onboarding Service) and can be toggled by admin without a Persona Agent re-run. Flag changes take effect on the next Pipeline 1 run — no in-flight leads are affected.
+
 ---
 
 ## 7. Tool Invocation — How the Orchestrator Calls Tools
@@ -873,10 +906,16 @@ Every lead has a `pipeline_stage` field. The orchestrator reads and writes this 
 
 ```
 captured
-  → fetched          after Data Gather completes
-    → enriched       after Lead Enrichment completes
-      → normalised   after Normalise completes
-        → scored     after Scoring Agent returns valid output
+  → fetched                after Data Gather completes (DM path: pre-filter gate runs here)
+    → insufficient_signal    [DM path only] pre-filter gate returns proceed: false —
+                              no scoreable signal detected in the message; pipeline
+                              terminates for this lead; record is stored with this
+                              stage for audit; no enrichment or scoring occurs.
+                              See Use Case 3 in [[analyses/core-use-cases]] and
+                              [[analyses/global-data-collection-architecture]] Section 2.
+    → enriched             after Lead Enrichment completes (Lead Ad events enter here)
+      → normalised         after Normalise completes
+        → scored           after Scoring Agent returns valid output
 
 From scored, one of four outcomes:
   → delivered                bucket assigned, SLA set, written to salesperson output
@@ -892,11 +931,11 @@ From any non-terminal stage:
   → failed           retries exhausted
 ```
 
-**Terminal states:** `delivered`, `human_review`, `failed`
+**Terminal states:** `delivered`, `human_review`, `failed`, `insufficient_signal`
 
 **Non-terminal holding state:** `awaiting_clarification` — the lead is paused and waiting for input from the prospect. It must be treated as non-terminal by the concurrency guard: a lead in `awaiting_clarification` is not stale and must NOT be resumed by the crash-recovery path. The orchestrator distinguishes it from a crashed-run hold by checking whether the stage is exactly `awaiting_clarification` before applying the timeout logic in Section 8.3.
 
-These pipeline_stage values are now locked. S1's entity catalog confirms the `lead` entity exists and carries this field. The accepted string values above are the ones S1 must implement — they are not flexible. Every orchestrator read and write depends on exactly these strings. If S1 ever changes a value (e.g. `normalised` → `normalized`), the orchestrator breaks silently at runtime.
+These pipeline_stage values are now locked. S1's entity catalog confirms the `lead` entity exists and carries this field. The accepted string values above are the ones S1 must implement — they are not flexible. Every orchestrator read and write depends on exactly these strings. If S1 ever changes a value (e.g. `normalised` → `normalized`), the orchestrator breaks silently at runtime. `insufficient_signal` was added 2026-05-19 (planning audit FIX-003) to cover the Use Case 3 pre-filter gate no-signal path — expected to be the highest-volume terminal stage at production load. The pipeline_stage DB column or enum must include this value.
 
 ### 8.2 The Write Order Rule
 
@@ -1037,9 +1076,9 @@ The orchestrator sits between the data layer (S1) and the intelligence layer (S2
 
 | What is needed | Who delivers | Status |
 |---|---|---|
-| `leads.pipeline_stage` — exact field name and all accepted string values | S1 | **RESOLVED** — values locked by this document: captured → fetched → enriched → normalised → scored → delivered / human_review / awaiting_clarification / failed. `awaiting_clarification` added 2026-05-03 (Intent Gate, DM path). S1 implements exactly these strings. |
+| `leads.pipeline_stage` — exact field name and all accepted string values | S1 | **RESOLVED** — values locked by this document: captured → fetched → enriched → normalised → scored → delivered / human_review / awaiting_clarification / failed / insufficient_signal. `awaiting_clarification` added 2026-05-03 (Intent Gate, DM path). `insufficient_signal` added 2026-05-19 (pre-filter gate no-signal terminal state — planning audit FIX-003). S1 implements exactly these strings. |
 | Data store for pipeline execution and lineage | S1 | **RESOLVED** — three entities confirmed: `pipeline_run` (run-level), `task_execution` (step-level), `lineage_record` (provenance). Orchestrator writes to all three after every stage. |
-| Scoring Agent output JSON schema | S2 | **RESOLVED** — schema locked. Key fields: `score` (int), `bucket` (lowercase string), `reasoning` (string), `lead_completeness` (float 0.0–1.0), `sub_scores` (object), `recommended_action` (string), `needs_review` (bool), `schema_version`, `prompt_version`, `model`. |
+| Scoring Agent output JSON schema | S2 | **RESOLVED** — schema locked at v1.1.0. Key fields: `score` (int), `bucket` (enum: hot/warm/cold), `reasoning` (structured object: primary_driver, signal_contributors[], data_gaps[], salesperson_note — NOT a string), `lead_completeness` (float 0.0–1.0), `sub_scores` (object), `recommended_action` (enum: 7 values), `needs_review` (bool), `schema_version`, `prompt_version`, `model`. See [[analyses/llm-io-contract]] v1.1.0. |
 | Signal `detection_rule` format and evaluation engine | S2 | **RESOLVED 2026-04-28** — named extractor + params. See [[analyses/signal-detection-rule-spec]]. |
 
 ### Soft Blockers — resolved
@@ -1087,7 +1126,7 @@ Updated 2026-04-22 — items resolved by S1 entity catalog and S2 intelligence l
 |---|---|
 | Orchestrator is deterministic — makes no LLM calls | Team decision |
 | Two-pipeline architecture: Pipeline 2 (setup) + Pipeline 1 (per lead) | Team decision 2026-04-19 |
-| 4 LLM agents total (3 in Pipeline 2, 1 in Pipeline 1) | Team decision 2026-04-19 |
+| 5 LLM agents total: Pipeline 2 — Onboarding Agent, ICP Agent, Signal Agent (all Sonnet); Pipeline 1 — Scoring Agent (Sonnet, all paths) + Message Parser (Haiku, DM path only) | Team decision 2026-04-19; Message Parser formally added 2026-05-03 (global-data-collection-architecture); §2 table updated 2026-05-19 (planning audit FIX-004) |
 | LLM calls per lead: one Sonnet call (Scoring Agent, all paths) + one Haiku call (Message Parser, DM path only) — revised 2026-05-03 | Team decision; global-data-collection-architecture 2026-05-03 |
 | Signal extraction is deterministic — no LLM | Team decision 2026-04-19 |
 | Scoring Agent uses fill-in-the-blanks prompt template | Team decision 2026-04-19 |
@@ -1100,10 +1139,12 @@ Updated 2026-04-22 — items resolved by S1 entity catalog and S2 intelligence l
 | Score decay, SLA tracker, and feedback jobs run outside the orchestrator | Team decision |
 | Governance layer failure must never halt Pipeline 1 or Pipeline 2 | Team decision |
 | System proposes pipeline re-runs — team lead always approves | Locked principle |
-| pipeline_stage accepted string values locked (see Section 8.1) — `awaiting_clarification` added 2026-05-03 | S1 entity catalog 2026-04-22; global-data-collection-architecture 2026-05-03 |
+| pipeline_stage accepted string values locked (see Section 8.1) — `awaiting_clarification` added 2026-05-03; `insufficient_signal` added 2026-05-19 | S1 entity catalog 2026-04-22; global-data-collection-architecture 2026-05-03; planning audit FIX-003 2026-05-19 |
 | Data store is three entities: pipeline_run, task_execution, lineage_record | S1 entity catalog 2026-04-22 |
 | Scoring Agent output schema locked — `lead_completeness` (not `confidence`) | S2 intelligence layer design 2026-04-22 |
 | sub_scores schema locked — five fields: fit, intent, engagement, behaviour, context; `recency` removed | global-data-collection-architecture 2026-05-03 |
+| Default scoring dimension weights locked: Fit 25%, Intent 25%, Engagement 20%, Behaviour 20%, Context 10% (sum = 100%). Per-tenant overrides via `tenant_config.scoring_weights`. §3.2 table updated from illustrative (~30%/~15%) to locked values 2026-05-19 (planning audit FIX-015). | Confirmed defaults; planning audit 2026-05-19 |
+| SLA windows locked: HOT = 24 hours, WARM = 48 hours, COLD = weekly batch. §3.3 bucket table updated 2026-05-20 (planning audit FIX-011). AR1 metric now calculable without this open decision. | Planning audit FIX-011 2026-05-20 |
 | No separate human_review_queue table — filtered view of leads | S1 entity catalog 2026-04-22 |
 | PersonaObject structure locked | S2 intelligence layer design 2026-04-22 |
 | Signal + signal_evaluation are formal separate entities | S1 entity catalog 2026-04-22 |

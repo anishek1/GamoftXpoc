@@ -41,7 +41,7 @@ status: COMPLETE — 8 Inngest functions implemented covering Pipeline 2, Pipeli
 | `pipeline1/data-gather.ts` | `pipeline1-data-gather` | `lead/batch.trigger` event | Pre-flight check → parallel channel fetch → dedup → fan-out |
 | `pipeline1/lead-processor.ts` | `pipeline1-lead-processor` | `lead/received` event | Full per-lead pipeline; DM path includes Pre-Filter + Message Parser (Haiku) |
 | `scheduled/score-decay.ts` | `score-decay` | Cron: daily 02:00 UTC | -10@7d, -20@14d, auto-cold@30d |
-| `scheduled/sla-monitor.ts` | `sla-monitor` | Cron: hourly | Alerts team lead on HOT (24h) and WARM (2–3d) SLA breaches |
+| `scheduled/sla-monitor.ts` | `sla-monitor` | Cron: hourly | Alerts team lead on HOT (24h) and WARM (48h) SLA breaches |
 | `scheduled/quality-metrics.ts` | `quality-metrics-per-run` | `pipeline/run.complete` event | Score Coverage Rate, completeness distribution, failure rate |
 | `scheduled/quality-metrics.ts` | `quality-metrics-weekly` | Cron: Monday 00:00 UTC | AR1–AR4, C1–C2 action and consistency metrics |
 | `scheduled/quality-metrics.ts` | `quality-metrics-monthly` | Cron: 1st of month 01:00 UTC | AP1–AP3, C4, AR5 — requires ≥100 outcomes per bucket |
@@ -191,7 +191,7 @@ src/
       lead-processor.ts               ← Pipeline 1 per-lead: DM+LeadAd paths, scoring, bucketize
     scheduled/
       score-decay.ts                  ← Score decay cron (-10@7d, -20@14d, cold@30d)
-      sla-monitor.ts                  ← SLA breach alerting (HOT 24h, WARM 2-3d)
+      sla-monitor.ts                  ← SLA breach alerting (HOT 24h, WARM 48h)
       quality-metrics.ts              ← Per-run + weekly + monthly quality jobs
       pipeline2-rerun-check.ts        ← Bi-weekly proactive check-in + feedback-driven proposals
   app/
@@ -210,7 +210,7 @@ src/
 - awaiting_clarification as non-terminal state (source: [[analyses/orchestration-layer-spec]] §8.1)
 - DM path vs Lead Ad entry point split (source: [[analyses/orchestration-layer-spec]] §4.1)
 - Score decay schedule (-10@7d, -20@14d, auto-cold@30d) (source: [[concepts/score-decay]])
-- SLA deadlines (HOT=24h, WARM=2-3d, COLD=weekly) (source: [[concepts/action-sla]])
+- SLA deadlines (HOT=24h, WARM=48h, COLD=weekly) (source: [[analyses/orchestration-layer-spec]] §11 Confirmed Decisions)
 - Quality metrics cadences and metric definitions (source: [[analyses/governance-observability-layer]], [[analyses/scoring-quality-metrics]])
 - system proposes / team lead approves for Pipeline 2 re-runs (source: [[analyses/orchestration-layer-spec]] §3.3)
 - quality_snapshots is the only read target for governance (source: [[analyses/service-scaling-strategy]] Rec 11)

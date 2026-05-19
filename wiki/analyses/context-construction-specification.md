@@ -47,7 +47,7 @@ The system message is assembled **once per tenant per prompt version** by the **
 | Section | Content | Source |
 |---|---|---|
 | `[SYSTEM]` | Role definition, scoring rubric, dimension weights, handling rules for missing signals | PersonaObject (scoring_weights) + locked scoring rules |
-| `[CONTEXT]` | Tenant business description, ICP narrative, disqualifying profiles, per-signal weights | PersonaObject + IcpDefinition |
+| `[CONTEXT]` | Tenant business description, ICP narrative, disqualifying profiles, per-signal weights, tone (salesperson note register), custom_rules (tenant scoring rules) | PersonaObject + IcpDefinition |
 | `[OUTPUT FORMAT]` | JSON schema, field definitions, hard constraints (no markdown, JSON only) | Schema constants (system-defined) |
 
 ### 2.2 Immutability Rule
@@ -61,6 +61,8 @@ Once assembled for a given `(tenant_id, prompt_template_version)` pair, the syst
 The system message cache breaks when any of the following change:
 - `persona.scoring_weights` (any dimension weight)
 - `persona.icp_summary` or `persona.disqualifying_profiles`
+- `persona.custom_rules` (any rule added, removed, or changed)
+- `persona.tone` (change in communication register changes salesperson_note output style)
 - Any signal definition (name, weight, or description)
 - The scoring rubric (locked rules — requires schema version bump)
 

@@ -119,7 +119,7 @@ After every Pipeline 1 run, the orchestrator formats the scored leads into lead 
 | Score (0–100) | ScoringOutput.score — from Scoring Agent |
 | Reasoning text | ScoringOutput.reasoning — one-line string from Scoring Agent |
 | Recommended action | ScoringOutput.recommended_action — from Scoring Agent |
-| SLA reminder | Set by orchestrator based on bucket: HOT=24h, WARM=2-3d, COLD=weekly |
+| SLA reminder | Set by orchestrator based on bucket: HOT=24h, WARM=48h, COLD=weekly |
 | Feedback buttons | UI controls — write to `feedback_events` via API |
 
 **What the salesperson does NOT see:**
@@ -330,7 +330,7 @@ When a lead is delivered (pipeline_stage = 'delivered'), the Delivery Layer can 
 | Bucket | Sync timing | Why |
 |---|---|---|
 | HOT | Immediate push on delivery | HOT leads need to appear in the CRM before the 24h SLA clock starts |
-| WARM | Immediate push on delivery | Still time-sensitive within 2–3 day window |
+| WARM | Immediate push on delivery | Still time-sensitive within 48-hour window |
 | COLD | `[TBD — immediate vs. batched daily]` | Lower urgency; batching may be more efficient depending on volume |
 | human_review | Not pushed until resolved | Pushing unreviewed leads to CRM creates noise — wait for human to confirm bucket |
 | awaiting_clarification | Not pushed | Lead is paused awaiting clarification reply; pipeline has not completed; no score to push |

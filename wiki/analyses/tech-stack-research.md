@@ -9,7 +9,7 @@ sources_consulted:
   - "[[analyses/delivery-integration-layer]]"
   - "[[analyses/governance-observability-layer]]"
   - "[[analyses/execution-type-classification]]"
-status: COMPLETE — pending team decisions on 3 open items (marked [TEAM DECISION])
+status: COMPLETE — 3 tool selections deferred to development phase; requirements locked below
 ---
 
 # Technology Stack Research — Lead Intelligence Engine
@@ -40,9 +40,11 @@ These were decided during research and have no meaningful competing alternative.
 
 ---
 
-## Three Open Decisions (Team Discussion Required)
+## Three Tool Selections — Requirements Locked, Choice Deferred to Development
 
 These three categories have two strong options each. The right answer depends on the team's operational capacity and budget preference. Both options in each pair are production-ready.
+
+**Approach:** The mandatory requirements for each category are locked below. The team will evaluate candidate tools against these requirements during the development phase and record the final selection in the **Locked Decisions** section above. The research tables remain as reference material.
 
 ---
 
@@ -100,9 +102,21 @@ These three categories have two strong options each. The right answer depends on
 | "Beehive" extensibility | Excellent | Good |
 | Battle-tested | Yes (Uber, Stripe, Robinhood) | Yes (AWS native) |
 
-**Recommendation:** Temporal self-hosted. The mid-task crash recovery and Pythonic workflow code are worth $30/month and the ops overhead of one Docker container. If the team has zero ops capacity: Step Functions.
+**Recommendation from research:** Temporal self-hosted. The mid-task crash recovery and Pythonic workflow code are worth $30/month and the ops overhead of one Docker container. If the team has zero ops capacity: Step Functions.
 
-**[TEAM DECISION — Option A or B?]**
+**Tool selection deferred to development.** The team will finalize this choice when the pipeline stage is being implemented. Any tool selected MUST satisfy all of the following requirements:
+
+#### Workflow Orchestration — Mandatory Requirements
+
+| # | Requirement | Why it is non-negotiable |
+|---|---|---|
+| R1 | **Per-stage crash recovery** — if the orchestrator crashes mid-execution, the system must be able to resume from the last successfully completed pipeline stage, not restart from the beginning | Prevents duplicate LLM calls and data corruption on crash |
+| R2 | **Native Python SDK** — workflow and activity definitions must be written in Python, not a DSL (JSON, YAML, XML) | The entire backend is Python; a DSL adds a translation layer with no benefit |
+| R3 | **Async-safe execution** — must support concurrent execution of multiple leads per tenant without shared state | Pipeline 1 processes up to N leads in parallel |
+| R4 | **Retry logic per step** — must support configurable retry counts and backoff per activity type, not just per workflow | Different stages (LLM call vs enrichment API) need different retry policies |
+| R5 | **Timeout enforcement per step** — must support per-activity timeouts | Scoring Agent calls have a 30-second timeout; enrichment calls have a different limit |
+| R6 | **Workflow state visibility** — must expose a query/inspection interface to see which pipeline stage a given lead is currently at | Required for the DevOps dashboard and crash recovery path |
+| R7 | **Durable state persistence** — workflow state must survive the orchestrator process restarting | The crash safety guarantee in orchestration-layer-spec §8.1 depends on this |
 
 ---
 
@@ -168,9 +182,20 @@ pusher_client.trigger(f'private-user-{user_id}', 'lead-card', {
 | Migration path | N/A (already managed) | To Pusher = change 3 env vars |
 | Code changes between options | None — same Pusher SDK | None — Pusher-compatible |
 
-**Recommendation:** Soketi on EC2 at MVP. Same code as Pusher. Saves $14-264/month. Migrate to Pusher later if team wants to eliminate the EC2 container.
+**Recommendation from research:** Soketi on EC2 at MVP. Same code as Pusher. Saves $14-264/month. Migrate to Pusher later if team wants to eliminate the EC2 container.
 
-**[TEAM DECISION — Option A or B?]**
+**Tool selection deferred to development.** The team will finalize this choice when the Delivery and Integration Layer is being implemented. Any tool selected MUST satisfy all of the following requirements:
+
+#### Real-time WebSocket / Chat Delivery — Mandatory Requirements
+
+| # | Requirement | Why it is non-negotiable |
+|---|---|---|
+| R1 | **Private per-user channels** — each salesperson must receive only their own lead cards; cross-tenant or cross-user leakage is a hard security violation | Multi-tenant isolation requirement |
+| R2 | **Python server-side SDK** — the Orchestration Service must be able to push events to a channel from Python without a separate relay service | All backend services are Python |
+| R3 | **Web push notifications** — must support HOT lead push notifications to salesperson browsers even when the tab is not in focus | HOT leads require notification within the SLA window |
+| R4 | **Supports at least 100 simultaneous connections at MVP** — 3 tenants × ~30 salespeople = ~90 concurrent at peak | MVP scale baseline |
+| R5 | **Message delivery guarantee** — events pushed while a client is disconnected must be deliverable on reconnect (missed event replay or client-side polling fallback) | Salesperson must not miss a HOT lead due to a brief disconnection |
+| R6 | **Environment-level isolation** — dev, staging, and prod channels must be strictly isolated; a staging event must never reach a production client | Prevents test data from appearing in production dashboards |
 
 ---
 
@@ -236,7 +261,19 @@ At 300 leads/day with 50GB data, it technically works. The honest risks:
 
 **Hybrid option for cost-sensitive early stage:** Run RDS t3.micro (~$27/month) for the first 30 days while validating the product, then migrate to Aurora Serverless v2. Schema is identical — migration is a pg_dump/pg_restore. This costs ~$27 in month 1 instead of $94.
 
-**[TEAM DECISION — Aurora Serverless v2, PostgreSQL on EC2, or RDS for first 30 days then Aurora?]**
+**Tool selection deferred to development.** The team will finalize this choice when the data layer is being provisioned. Any hosting option selected MUST satisfy all of the following requirements:
+
+#### PostgreSQL Hosting — Mandatory Requirements
+
+| # | Requirement | Why it is non-negotiable |
+|---|---|---|
+| R1 | **PostgreSQL 15+ compatibility** — the system uses Row-Level Security (RLS), generated columns, and JSONB with GIN indexing | Schema and query layer depend on these features |
+| R2 | **Row-Level Security (RLS) enforced at the database level** — every table with tenant data must enforce `tenant_id` isolation via RLS policies, not just application-layer filtering | Multi-tenant isolation is a security requirement, not a convenience |
+| R3 | **Automated backups with point-in-time recovery** — must support restoring to any point within at least 7 days | Lead scoring data and lineage records are business-critical |
+| R4 | **Connection pooling support** — must work with PgBouncer or an equivalent pooler; ECS Fargate services cannot maintain persistent connections at scale | ECS tasks are ephemeral; without pooling, each task restart opens a new connection |
+| R5 | **Secrets-manager-compatible credential rotation** — database credentials must be storable in and rotatable via the secrets vault (AWS Secrets Manager) without application downtime | Matches the security policy in [[analyses/security-planning]] |
+| R6 | **Minimum 99.5% monthly availability SLA** | Production workload with paying tenants |
+| R7 | **Read-replica support** — the Reporting Service must be able to query a read replica to avoid load on the primary | Quality metrics queries (weekly SQL jobs) must not affect pipeline throughput |
 
 ---
 
@@ -305,7 +342,7 @@ The following were flagged as TBD in the source architecture documents and are n
 1. **Signal `detection_rule` format** — **RESOLVED 2026-04-28.** Named extractor + params model. See [[analyses/signal-detection-rule-spec]].
 2. **Per-tenant Scoring Agent concurrency cap** — recommend 2 per tenant. Needs team decision based on provider rate limits.
 3. **`needs_review` threshold** — 0.6 or 0.75. Team decision after Month 1 baseline.
-4. **WARM SLA window** — 48h or 72h. Blocks AR1 quality metric.
+4. **WARM SLA window** — **RESOLVED: 48 hours (locked — planning audit FIX-011, 2026-05-20).** AR1 metric is now calculable.
 5. **Pipeline 2 check-in cadence** — 2-week or monthly.
 6. **Alert delivery channel** — chat only, or chat + email for critical failures.
 7. **Dashboard tooling** — in-product React tab vs Grafana vs Metabase. Grafana Cloud connects directly to `quality_snapshots` via read-only DB connection.
@@ -336,10 +373,21 @@ The following were flagged as TBD in the source architecture documents and are n
 
 ---
 
-## Follow-up Questions After Team Discussion
+## Follow-up — During Development
 
-1. Lock Decision 1 (Temporal vs Step Functions) based on team ops capacity
-2. Lock Decision 2 (Pusher vs Soketi) based on ops preference and budget
-3. Lock Decision 3 (Aurora vs EC2 PostgreSQL) based on ops experience and risk tolerance
-4. Confirm: HubSpot as first CRM integration target? (best Python SDK, free dev tier)
-5. ~~Lock signal `detection_rule` format~~ — **RESOLVED 2026-04-28.** See [[analyses/signal-detection-rule-spec]].
+When each tool category is being implemented, evaluate candidates against the locked requirements above and record the final selection in the **Locked Decisions** table at the top of this document. Capture:
+
+- **Selected tool** — name and version
+- **Why it was chosen** — which requirements it meets and any trade-offs accepted
+- **Configuration decisions** — hosting model (self-hosted vs managed), region, instance size
+- **Date locked**
+
+Remaining open items (non-blocking):
+
+1. ~~Lock signal `detection_rule` format~~ — **RESOLVED 2026-04-28.** See [[analyses/signal-detection-rule-spec]].
+2. Confirm: HubSpot as first CRM integration target? (best Python SDK, free dev tier)
+3. Per-tenant Scoring Agent concurrency cap — recommend 2; confirm against provider rate limits during development.
+4. `needs_review` threshold — 0.6 or 0.75; team decision after Month 1 baseline.
+5. Pipeline 2 check-in cadence — 2-week or monthly.
+6. Alert delivery channel — chat only, or chat + email for critical failures.
+7. Dashboard tooling — in-product React tab vs Grafana vs Metabase.

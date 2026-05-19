@@ -242,7 +242,7 @@ The per-run pre-flight check (documented in [[analyses/orchestration-layer-spec]
 - **`pending_review` auto-trigger:** Same gap — when Meta or LinkedIn flips a connector from `pending_review` to `active`, Stage 5 must be re-evaluated automatically. Requires a status-change event or polling job.
 - **Queue drain concurrency:** The gap-window drain is described as FIFO, but no concurrency cap is specified. If a large volume of events accumulated during a long onboarding (e.g., a tenant who left connectors active for a week before completing Pipeline 2), the drain could overwhelm the per-tenant concurrency cap. A drain-specific rate limit or batch size should be defined.
 - **Stage Map update needed:** The Stage 5 diagram in [[analyses/onboarding-flow-stage-map]] still shows `consent_preference` as a readiness condition. This should be removed now that Subtask 3 resolves it as not applicable.
-- **orchestration-layer-spec update needed:** §6.1 step 7 says "Mark tenant as onboarding_complete." §6.2 checks `tenant.onboarding_complete = true`. Both should be updated to use `tenant.status = 'active'`.
+- **orchestration-layer-spec — RESOLVED (planning audit FIX-012, 2026-05-20):** §6.1 step 7 now reads `Set tenant.status = 'active'` and §6.2 now checks `Is tenant.status = 'active'?`. The `tenant.onboarding_complete` field name is retired; `tenant.status` is the single authoritative ready-state field.
 
 ---
 

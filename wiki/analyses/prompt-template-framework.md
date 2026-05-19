@@ -78,6 +78,8 @@ The CONTEXT section provides the business-specific configuration that makes this
 - The tenant's business persona (what kind of company they are, who their customers are, what they sell)
 - The Ideal Customer Profile (ICP) — a detailed description of the best kind of lead for this business, including disqualifying signals
 - The signal definitions and their weights — the specific questions the system uses to evaluate leads, grouped by scoring dimension
+- The tenant's `tone` — the communication register the AI must use when writing the `salesperson_note` output field (e.g., "consultative", "direct", "warm"). Omitted from the CONTEXT block if the tenant did not specify.
+- The tenant's `custom_rules` — scoring rules specific to this tenant that the AI must apply before returning a score (e.g., "Never assign HOT if the lead domain matches a known competitor"). Listed under a CUSTOM RULES subsection. Omitted from the CONTEXT block if empty.
 
 **Key rules for this section:**
 - This section is produced by the Persona Agent during onboarding. It does not change for every lead — only when the tenant updates their business configuration.
@@ -170,6 +172,8 @@ The system message version (tracked as `prompt_version` in the data layer) incre
 - The tenant's business persona changes (Persona Agent re-runs)
 - A new signal is added or removed
 - Scoring weights are adjusted
+- `custom_rules` are added, removed, or changed
+- `tone` changes
 - The scoring rules are updated
 
 The version is recorded in the lineage log for every score, so you can always answer: "which prompt version was active when this lead was scored?"
@@ -257,7 +261,7 @@ The total score (0–100) is the sum of all five dimension scores.
 BUCKETS
 Assign a bucket based on total score:
   HOT   = 80–100  →  Contact within 24 hours
-  WARM  = 55–79   →  Contact within 2–3 days
+  WARM  = 55–79   →  Contact within 48 hours
   COLD  = 0–54    →  Weekly nurture or archive
 
 Assign the bucket that matches your total score. The system will verify
@@ -270,12 +274,22 @@ RULES — THESE APPLY TO EVERY LEAD
    it is positive or negative. Do not penalise the lead for a missing signal
    unless the signal's absence is itself meaningful (e.g., no response to
    a follow-up is different from simply not having been asked yet).
-3. Your reasoning must identify the two or three most important signals that
-   drove the score — both signals that raised the score and any that lowered it.
-4. Your recommended_action must be one sentence, specific to what a salesperson
-   can do right now (e.g., "Call today to confirm demo timing and send pricing deck").
+3. Your reasoning must be a structured object with exactly four fields:
+   primary_driver (one sentence, 10–200 characters, naming the dominant factor),
+   signal_contributors (array of 1–10 objects each with signal name, dimension,
+   direction [positive|negative], and weight [high|medium|low]),
+   data_gaps (array of signal names that were not_detected and meaningfully
+   limited the score — empty array if none),
+   and salesperson_note (plain language for the salesperson, 10–300 characters).
+   Do not return reasoning as a string.
+4. Your recommended_action must be exactly one of these 7 enum values:
+   call_immediately | schedule_demo | send_pricing_deck |
+   follow_up_scheduled | send_qualifying_message | nurture | archive
+   Do not return a sentence or free text. Return the enum value only.
 5. Never collapse sub_scores. Always return all five dimensions.
 6. Return the data completeness value exactly as provided. Do not change it.
+7. If CUSTOM RULES appear in the CONTEXT section, apply them before assigning
+   the final score. Custom rules take precedence over the general scoring rubric.
 
 [CONTEXT]
 ABOUT THIS BUSINESS (Gamoft)
@@ -333,6 +347,14 @@ SIGNAL WEIGHTS WITHIN EACH DIMENSION
     account_growth_signal   weight 0.35  (company recently funded, hiring, expanding?)
     seasonal_relevance      weight 0.25  (does seasonality favour a purchase now?)
 
+SALESPERSON NOTE TONE
+consultative — write the salesperson_note as a trusted advisor guiding the
+salesperson, not as a directive. Explain the why, not just the what.
+
+CUSTOM RULES (apply before returning score)
+- Never assign HOT bucket if the lead's company name or email domain matches
+  a known competitor.
+
 [OUTPUT FORMAT]
 Return a single valid JSON object. No other text before or after the JSON.
 No markdown code blocks. No explanation outside the JSON structure.
@@ -341,7 +363,19 @@ JSON schema:
 {
   "score": <integer 0–100>,
   "bucket": <"hot" | "warm" | "cold">,
-  "reasoning": <string — one sentence written for a salesperson, naming the key signals>,
+  "reasoning": {
+    "primary_driver": <string — one sentence naming the dominant scoring factor, 10–200 chars>,
+    "signal_contributors": [
+      {
+        "signal":    <string — exact signal name from SIGNAL VALUES>,
+        "dimension": <"fit" | "intent" | "engagement" | "behaviour" | "context">,
+        "direction": <"positive" | "negative">,
+        "weight":    <"high" | "medium" | "low">
+      }
+    ],
+    "data_gaps": [<string — signal names that were not_detected and limited the score>],
+    "salesperson_note": <string — plain language for the salesperson, 10–300 chars>
+  },
   "lead_completeness": <float — return unchanged from the value in LEAD DATA>,
   "sub_scores": {
     "fit":        <integer 0–25>,
@@ -350,16 +384,19 @@ JSON schema:
     "behaviour":  <integer 0–20>,
     "context":    <integer 0–10>
   },
-  "recommended_action": <string — one sentence, specific and immediately actionable>,
+  "recommended_action": <"call_immediately" | "schedule_demo" | "send_pricing_deck" | "follow_up_scheduled" | "send_qualifying_message" | "nurture" | "archive">,
   "needs_review": <false>
 }
 
 Notes on specific fields:
-- reasoning: Write for a salesperson, not an engineer. Example:
-  "Strong ICP fit (CTO at funded SaaS co) and explicit high-intent signals
-   (pricing + demo request + stated timeline) make this a high-priority lead."
-- recommended_action: Be specific. Bad: "Follow up soon." Good: "Call today —
-  confirm demo time and send the enterprise pricing deck."
+- reasoning: Return a structured object — not a string. All four fields are required.
+  primary_driver and salesperson_note are written for a salesperson, not an engineer.
+  signal_contributors lists the 1–10 most impactful signals (positive and negative).
+  data_gaps lists signal names that were not_detected and meaningfully reduced the score.
+- recommended_action: Return exactly one enum value — no other text allowed.
+  Mapping guide: HOT → call_immediately or schedule_demo;
+  WARM → follow_up_scheduled or send_pricing_deck;
+  COLD → send_qualifying_message, nurture, or archive.
 - needs_review: Always return false. The system will set this to true if
   lead_completeness falls below the review threshold — you do not decide this.
 - sub_scores: All five keys must always be present. A zero means no signal
@@ -431,7 +468,21 @@ Return JSON only.
 {
   "score": 86,
   "bucket": "hot",
-  "reasoning": "Strong ICP fit (CTO at 120-person funded SaaS co, Tier 1 city) combined with four explicit high-intent signals (pricing, demo, urgency, stated timeline this month) and fast multi-channel engagement — this lead has all the hallmarks of a short-cycle, high-conversion opportunity.",
+  "reasoning": {
+    "primary_driver": "Strong ICP fit (CTO at 120-person funded SaaS co, Tier 1 city) with four explicit high-intent signals and fast multi-channel engagement.",
+    "signal_contributors": [
+      {"signal": "role_relevance",     "dimension": "fit",        "direction": "positive", "weight": "high"},
+      {"signal": "industry_match",     "dimension": "fit",        "direction": "positive", "weight": "high"},
+      {"signal": "demo_requested",     "dimension": "intent",     "direction": "positive", "weight": "high"},
+      {"signal": "pricing_request",    "dimension": "intent",     "direction": "positive", "weight": "high"},
+      {"signal": "timeline_stated",    "dimension": "intent",     "direction": "positive", "weight": "high"},
+      {"signal": "follow_up_initiated","dimension": "engagement",  "direction": "positive", "weight": "medium"},
+      {"signal": "prior_customer",     "dimension": "behaviour",  "direction": "negative", "weight": "medium"},
+      {"signal": "budget_mentioned",   "dimension": "intent",     "direction": "negative", "weight": "low"}
+    ],
+    "data_gaps": ["budget_mentioned"],
+    "salesperson_note": "CTO at a freshly funded SaaS company — asked for pricing and a demo with a stated monthly decision timeline. Call today, confirm demo slot, and send the enterprise pricing deck before end of day."
+  },
   "lead_completeness": 0.87,
   "sub_scores": {
     "fit": 23,
@@ -440,7 +491,7 @@ Return JSON only.
     "behaviour": 14,
     "context": 9
   },
-  "recommended_action": "Call today — confirm demo slot for this week and send the enterprise pricing deck before end of day.",
+  "recommended_action": "call_immediately",
   "needs_review": false
 }
 ```
@@ -450,11 +501,11 @@ Return JSON only.
 | Element | Why it is written this way |
 |---|---|
 | `score: 86` | Sum of sub_scores: 23+22+18+14+9 = 86. Bucket HOT (≥80) is consistent. |
-| `reasoning` | Mentions the tenant (Gamoft ICP match), the two strongest signals (fit + intent), and the engagement pattern. Written for a salesperson, not an engineer. |
+| `reasoning` | Structured object with all four required fields. `primary_driver` names the dominant factor in one sentence. `signal_contributors` lists 8 signals (6 positive, 2 negative) ordered by impact. `data_gaps` notes `budget_mentioned` as the one missing high-value intent signal. `salesperson_note` is the actionable plain-language summary for the salesperson. |
 | `sub_scores.fit: 23` | Near-maximum (max 25). All four Fit signals fired: industry, role, size, serviceability. Slight deduction because it is a first-time lead with no prior relationship. |
 | `sub_scores.intent: 22` | Near-maximum (max 25). Four of five Intent signals fired. Only `budget_mentioned` is false — small deduction. |
 | `sub_scores.behaviour: 14` | Moderate (max 20). No prior customer status and no referral weaken this dimension despite good content engagement and form completion. |
-| `recommended_action` | Specific: confirms *what* (demo + pricing deck) and *when* (today / before end of day). Not generic. |
+| `recommended_action` | `call_immediately` — the correct enum value for an 86-point HOT lead with confirmed ICP fit, four high-intent signals, and a stated monthly decision timeline. |
 | `needs_review: false` | Completeness is 0.87 (≥ 0.80 threshold band). System confirms this after scoring. |
 
 ---
@@ -493,18 +544,21 @@ RULES — THESE APPLY TO EVERY LEAD
 1. Only use the signal values provided in the TASK section. ...
 2. If a signal value is "not_detected", treat it as absent. Do not assume
    it is positive or negative. ...
-3. Your reasoning must identify the two or three most important signals that
-   drove the score — both signals that raised the score and any that lowered it.
-   When data is sparse, your reasoning must explicitly name what is missing and
-   why that limits the score.
-4. Your recommended_action must be one sentence, specific to what a salesperson
-   can do right now. For low-completeness leads, the recommended action should
-   typically be a qualifying question.
+3. Your reasoning must be a structured object with exactly four fields:
+   primary_driver, signal_contributors, data_gaps, and salesperson_note.
+   For sparse-data leads, data_gaps must list every signal that was not_detected
+   and meaningfully limited the score. Do not return reasoning as a string.
+4. Your recommended_action must be exactly one of these 7 values:
+   call_immediately | schedule_demo | send_pricing_deck |
+   follow_up_scheduled | send_qualifying_message | nurture | archive
+   For low-completeness leads, send_qualifying_message is typically appropriate.
 5. Never collapse sub_scores. Always return all five dimensions.
 6. Return the data completeness value exactly as provided. Do not change it.
+7. If CUSTOM RULES appear in the CONTEXT section, apply them before assigning
+   the final score. Custom rules take precedence over the general scoring rubric.
 
 [CONTEXT]
-[... same business persona, ICP, signal weights as Sample 1 ...]
+[... same business persona, ICP, signal weights, tone, custom_rules as Sample 1 ...]
 
 [OUTPUT FORMAT]
 [... same JSON schema as Sample 1 ...]
@@ -579,7 +633,19 @@ Return JSON only.
 {
   "score": 21,
   "bucket": "cold",
-  "reasoning": "Almost no scoreable signals: Fit is unassessable (company unknown), Intent is minimal (a single 'interested' message with no pricing or demo request), and Engagement is at baseline (one message, no follow-up). The only positive signal is inbound interest on a valid India phone number — not enough to elevate the lead without qualifying information.",
+  "reasoning": {
+    "primary_driver": "Almost no scoreable signals: Fit unassessable (company unknown), Intent minimal (single 'interested' message), Engagement at baseline (one message, no follow-up).",
+    "signal_contributors": [
+      {"signal": "serviceability",    "dimension": "fit",        "direction": "positive", "weight": "low"},
+      {"signal": "industry_match",    "dimension": "fit",        "direction": "negative", "weight": "high"},
+      {"signal": "role_relevance",    "dimension": "fit",        "direction": "negative", "weight": "high"},
+      {"signal": "demo_requested",    "dimension": "intent",     "direction": "negative", "weight": "high"},
+      {"signal": "pricing_request",   "dimension": "intent",     "direction": "negative", "weight": "high"},
+      {"signal": "conversation_depth","dimension": "engagement",  "direction": "negative", "weight": "high"}
+    ],
+    "data_gaps": ["industry_match", "role_relevance", "company_size_fit", "response_speed", "referral_source", "content_engagement", "geography_tier", "account_growth_signal"],
+    "salesperson_note": "A single 'interested' message with no company or role context — no scoring basis beyond a confirmed India inbound. Send a qualifying message before investing any sales time."
+  },
   "lead_completeness": 0.52,
   "sub_scores": {
     "fit": 3,
@@ -588,7 +654,7 @@ Return JSON only.
     "behaviour": 4,
     "context": 5
   },
-  "recommended_action": "Send a short qualifying message asking for their company name and what specifically they are looking to solve — do not invest sales time until basic fit is confirmed.",
+  "recommended_action": "send_qualifying_message",
   "needs_review": false
 }
 ```
@@ -600,11 +666,11 @@ Return JSON only.
 | Element | Why it is written this way |
 |---|---|
 | `score: 21` | Low but non-zero. The lead is real (inbound, valid phone), made contact (revisit_count: 1), and expressed some interest (one message). These prevent a zero score. Nothing else scored. |
-| `reasoning` | Explicitly names what is missing (company, pricing request, follow-up). This is required by the framework's Rule 3 for low-completeness leads. Salesperson reads this and immediately understands why the score is low — not a system error. |
+| `reasoning` | Structured object with all four required fields. `primary_driver` states the core problem in one sentence. `signal_contributors` lists 6 signals (1 weak positive, 5 negatives) showing what failed to score. `data_gaps` explicitly lists all 8 signals that were not_detected — required by Rule 3 for sparse-data leads. `salesperson_note` gives the salesperson a clear, actionable directive. |
 | `sub_scores.fit: 3` | Near-zero (max 25). Only `serviceability: partial` contributed. Three other Fit signals are `not_detected`. |
 | `sub_scores.intent: 4` | Very low (max 25). The word "interested" in the message contributes a small amount, but no specific intent signals (pricing, demo, timeline) fired. |
 | `sub_scores.context: 5` | Half of max (max 10). `seasonal_relevance: neutral` contributes nothing. `geography_tier` and `account_growth_signal` are both `not_detected`. The score receives a small baseline for being a confirmed India inbound. |
-| `recommended_action` | Qualifies the lead rather than rushing to call. The salesperson's priority is to gather the missing information efficiently, not to invest call time on an unqualified lead. |
+| `recommended_action` | `send_qualifying_message` — the correct enum value for a COLD lead with 0.52 completeness and no scoreable fit signals. Gather basic info before committing any sales time. |
 | Compare to Sample 1 | Sample 1 scored 86 (HOT, immediate call). Sample 2 scores 21 (COLD, qualifying message first). Same scoring framework, same tenant, same signal definitions — but the actual lead data tells a completely different story. |
 
 ---
@@ -633,10 +699,19 @@ The complete stored record (after Output Schema Layer processing) is:
 {
   "score": 86,
   "bucket": "hot",
-  "reasoning": "...",
+  "reasoning": {
+    "primary_driver": "Strong ICP fit (CTO at 120-person funded SaaS co) with four explicit high-intent signals.",
+    "signal_contributors": [
+      {"signal": "demo_requested",  "dimension": "intent",    "direction": "positive", "weight": "high"},
+      {"signal": "pricing_request", "dimension": "intent",    "direction": "positive", "weight": "high"},
+      {"signal": "role_relevance",  "dimension": "fit",       "direction": "positive", "weight": "high"}
+    ],
+    "data_gaps": ["budget_mentioned"],
+    "salesperson_note": "CTO at funded SaaS co — call today, confirm demo slot, send enterprise pricing deck."
+  },
   "lead_completeness": 0.87,
   "sub_scores": { "fit": 23, "intent": 22, "engagement": 18, "behaviour": 14, "context": 9 },
-  "recommended_action": "...",
+  "recommended_action": "call_immediately",
   "needs_review": false,
   "schema_version": "v1.0",
   "prompt_version": "v1.3.0",

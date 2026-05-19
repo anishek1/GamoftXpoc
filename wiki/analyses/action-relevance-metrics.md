@@ -34,19 +34,16 @@ These are tracked, owned, and reviewed on a monthly cadence.
 ### AR1 — SLA Compliance Rate
 
 **Definition:**
-The system defines action windows per bucket — HOT within 24 hours, WARM within 2–3 days, COLD within the weekly batch. For each bucket, the percentage of leads first actioned within their SLA window.
+The system defines action windows per bucket — HOT within 24 hours, WARM within 48 hours, COLD within the weekly batch. For each bucket, the percentage of leads first actioned within their SLA window.
 
 **How it is calculated:**
 Using the action timestamp against the score assignment timestamp gives the exact time-to-action per lead. Leads that breached their window are SLA failures. Calculate separately for HOT, WARM, and COLD.
-
-**Open decision:**
-The WARM SLA is defined as 2–3 days. A single cutoff needs to be locked — 48 hours or 72 hours — before this metric can be calculated.
 
 **What it tells you:**
 Whether the system's action guidance is being followed operationally. HOT compliance is the most critical — a missed HOT lead is a missed high-priority opportunity.
 
 **Target:**
-TBD. To be set by product owner and team leads after reviewing Month 1 data. Note: unlike other metrics, SLA targets can be set early since the SLA windows themselves are already defined.
+TBD. To be set by product owner and team leads after reviewing Month 1 data. Note: unlike other metrics, SLA targets can be set early since the SLA windows are now locked — HOT = 24h, WARM = 48h, COLD = weekly.
 
 **Data needed:**
 Score assignment timestamps, action timestamps, bucket per lead.

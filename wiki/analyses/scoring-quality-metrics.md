@@ -452,7 +452,7 @@ Source: action log; minimum action timestamp per lead ID.
 Source: scoring output.
 
 `SLA Window for That Bucket` — the maximum allowed time between score assignment and first action.
-Source: system configuration: HOT = 24 hours, COLD = 7 days. WARM window is an open decision — must be locked at either 48 hours or 72 hours before this metric can be calculated.
+Source: system configuration: HOT = 24 hours, WARM = 48 hours (locked — planning audit FIX-011), COLD = 7 days.
 
 **What it tells you:**
 Whether the system's action guidance is being followed operationally. HOT compliance is the most critical — a missed HOT lead is a missed high-priority opportunity.

@@ -4,6 +4,223 @@
 
 ---
 
+## [2026-05-20] fix | FIX-010 — Create Enrichment-to-LLM Field Map
+
+- Fix: FIX-010 [P2 | MAJOR | Epic 0.9]
+- Files created:
+  - docs/phase0/enrichment-to-llm-field-map.md (NEW — satisfies Epic 0.9 AC "enrichment-to-LLM field map completed")
+- Files updated:
+  - index.md — new entry added for enrichment-to-llm-field-map.md
+- Content: Complete three-column trace (provider API field → EnrichedLead property → LLM INPUT_SCHEMA field + signal driven) for all 9 enrichment providers:
+  - Truecaller → lead.name, lead.geography
+  - Google Places → lead.geography, lead.city_tier, context.geography_tier signal
+  - Apollo.io → company.name/industry/size_employees/role, fit.* signals
+  - Surepass → company.registration_id, fit.company_size_fit (India B2B)
+  - Probe42 → fit.company_size_fit (financial health proxy), company.size_employees override
+  - Tracxn → context.account_growth_signal (funding stage + recency)
+  - NewsCatcherAPI → context.account_growth_signal (news sentiment + themes)
+  - IndiaMART/JustDial → fit.serviceability, fit.industry_match (SMB fallback)
+  - Serper → company.name/industry (last resort), lead_completeness penalty
+- Additional sections: Signal coverage by source table, field availability summary, write order and lineage note
+
+---
+
+## [2026-05-20] fix | FIX-011 — Lock WARM SLA Window to 48 Hours
+
+- Fix: FIX-011 [P2 | MINOR | Epics 0.1/0.7/0.11]
+- Files updated (10 files — all "2-3 days" WARM SLA references replaced):
+  - wiki/analyses/action-relevance-metrics.md — AR1 definition updated to 48h; "Open decision" section removed; Target note updated
+  - wiki/analyses/orchestration-layer-spec.md — §3.3 bucket table updated; §11 Confirmed Decisions row added
+  - wiki/analyses/execution-type-classification.md — G-2 table row, bucket table, SLA Tracker description updated
+  - wiki/analyses/delivery-integration-layer.md — lead card SLA reminder field, WARM CRM sync row updated
+  - wiki/analyses/governance-observability-layer.md — AR1 metric definition updated
+  - wiki/analyses/inngest-function-design.md — sla-monitor table row, directory comment, source reference updated
+  - wiki/analyses/prompt-template-framework.md — WARM bucket label updated
+  - wiki/analyses/mvp-scope-sign-off.md — SLA tracking row updated
+  - wiki/analyses/scoring-quality-metrics.md — WARM window TBD resolved to 48h
+  - wiki/analyses/tech-stack-research.md — Open decision #4 resolved
+- Resolution: WARM SLA window is now 48 hours (locked) across all planning documents. AR1 metric is now calculable without this dependency. 72h option dropped.
+
+---
+
+## [2026-05-20] fix | FIX-013 — Lock AWS CloudWatch as Phase 1 Observability Tool
+
+- Fix: FIX-013 [P2 | MINOR | Epic 0.11]
+- Files updated:
+  - wiki/analyses/observability-detail-spec.md — §1.1 log stream table updated; TBD tooling paragraph replaced with locked CloudWatch statement; Open Decisions table entry resolved
+  - wiki/analyses/mvp-scope-sign-off.md — DevOps table row updated from TBD to "AWS CloudWatch Logs (Phase 1 locked)"; Infrastructure Deferrals Grafana row updated to reflect Phase 2 upgrade path
+- Resolution: AWS CloudWatch (Phase 1) is now locked across both documents with a pointer to tech-stack-research.md. Grafana Cloud is documented as an eligible Phase 2 upgrade — no code changes required.
+
+---
+
+## [2026-05-20] fix | FIX-012 — Resolve tenant.status vs tenant.onboarding_complete Inconsistency
+
+- Fix: FIX-012 [P2 | MINOR | Epics 0.6/0.7]
+- Files updated:
+  - wiki/analyses/onboarding-flow-readiness.md — Caveats & Gaps item marked RESOLVED; confirms §6.1 and §6.2 now both use `tenant.status = 'active'`
+- Verification: orchestration-layer-spec.md §6.1 step 7 reads "Set tenant.status = 'active'" and §6.2 checks "Is tenant.status = 'active'?" — both already correct. `tenant.onboarding_complete` field name retired.
+
+---
+
+## [2026-05-20] fix | FIX-009 — Feature Flag Enforcement in Orchestration §6.3
+
+- Fix: FIX-009 [P2 | MAJOR | Epic 0.6]
+- Files updated:
+  - wiki/analyses/orchestration-layer-spec.md — Added "Feature Flag Enforcement" subsection to §6.3 with: enrichment provider flag table (9 providers), enforcement pseudocode, effect on lead_completeness, configuration note
+- Resolution: `tenant_config.feature_flags` is explicitly documented as loaded in step 2. Each enrichment provider call in step 6a is gated by its flag. Absent flag = disabled. Disabled providers record signals as `not_detected` and reduce `lead_completeness` proportionally.
+
+---
+
+## [2026-05-20] fix | FIX-008 — Wire tone and custom_rules into LLM I/O Contract
+
+- Fix: FIX-008 [P2 | MAJOR | Epic 0.6]
+- Files updated:
+  - wiki/analyses/llm-io-contract.md — Added `tone` and `custom_rules` as optional fields in `persona` input object; added Design Decisions table row
+  - wiki/analyses/context-construction-specification.md — Updated [CONTEXT] section description and §2.3 cache stability rules
+  - wiki/analyses/prompt-template-framework.md — Added Rule 7 (custom_rules apply before score), added CONTEXT section documentation, added SALESPERSON NOTE TONE and CUSTOM RULES subsections to Sample 1 CONTEXT block, updated Sample 2 abbreviation, updated version trigger list
+- Root cause: PersonaObject fields produced by Persona Agent were absent from INPUT_SCHEMA (`additionalProperties: false` would have silently dropped them). Both fields were never visible to the Rating Agent at scoring time.
+- Resolution: Wired both fields in as optional, typed fields. `custom_rules` takes precedence over general rubric per Rule 7. `tone` controls `salesperson_note` communication register. Changes to either invalidate the system message cache.
+
+---
+
+## [2026-05-19] audit | Phase 0 Planning Audit Report
+
+- File: docs/phase0/PLANNING_AUDIT_REPORT.md (NEW — created as output of READ-ONLY audit)
+- Backlog: raw/JIRA DOCS.xlsx (Sheet1 — 11 epics, 33 stories, 99 sub-tasks)
+- Files scanned: 76 .md files across wiki/ and repo root
+- Conflicts found: 3 Type A (direct contradiction), 4 Type B (naming drift), 4 Type C (dependency violation), 17 Type D (AC gaps), 3 Type E (DevOps consistency), 3 Type F (LLM contract coherence)
+- Total fixes: 15 (FIX-001 through FIX-015)
+- Critical findings (6): prompt-template-framework stale vs llm-io-contract v1.1.0 (A-1, A-2); insufficient_signal missing from pipeline_stage locked values (A-3); agent count 4 vs 5 (B-4); 3 infra decisions unresolved in tech-stack-research.md (D-1)
+- Safe to proceed immediately: Epic 0.10 (Security), Epic 0.8 (Data Acquisition), Epic 0.5 after FIX-001/FIX-002
+- Notes:
+  - All planning documents are OBSIDIAN_ONLY (wiki/analyses/); zero docs in /docs/phase0/ before this report
+  - Strongest area: LLM I/O contract chain (Epics 0.5, 0.9 contract links); weakest area: Epic 0.2 infra decisions and Epic 0.5 prompt framework staleness
+  - JIRA Epic 0.8 titles still use "scraping" terminology — action required by Anishekh before Sprint 1
+
+---
+
+## [2026-05-19] analysis | Epic 0.8 Data Acquisition Coverage & JIRA Rename
+
+- File: wiki/analyses/epic-0.8-data-acquisition-coverage.md (NEW)
+- Question: Epic 0.8 JIRA stories reference "scraping workflow" — does the system cover these requirements, and how should JIRA be updated?
+- Tags: jira, epic-0.8, enrichment, no-scraping, data-acquisition, coverage-mapping
+- Sources consulted: lead-enrichment-architecture, enrichment-tools-integration, global-data-collection-architecture, devops-controls, b2c-data-acquisition
+- Notes:
+  - Hard no-scraping policy: legal risk (DPDP/GDPR), reliability, maintenance cost, tenant trust
+  - All 3 Epic 0.8 stories (data source strategy, scraping workflow, scraping DevOps controls) are fully covered — under different terminology
+  - "Define scraping workflow" → maps to Source Registry + Company Resolver; inputs/outputs/merge logic all documented
+  - "Define scraping DevOps controls" → fully in devops-controls.md §0.8.1–0.8.3 (scheduler, throttling, failure logging)
+  - Full rename table: Epic title + 8 story/sub-task titles
+  - Action required: Anishekh to update JIRA story titles before Sprint 1 planning
+
+---
+
+## [2026-05-19] analysis | Core Use Cases — MVP Launch
+
+- File: wiki/analyses/core-use-cases.md (NEW)
+- Question: What are the 3 core use cases the platform must support for initial launch, with inputs, outputs, and stakeholders?
+- Tags: use-cases, mvp, b2b, b2c, smb, noise, pipeline1, stakeholders
+- Sources consulted: global-data-collection-architecture, orchestration-layer-spec, rating-agent-spec, mvp-scope-sign-off, delivery-integration-layer, onboarding-flow-stage-map
+- Notes:
+  - UC1 High-Intent B2B Enterprise: HOT path, all 13 pipeline steps, salesperson receives HOT card + 24h SLA; stakeholders: salesperson, CRM, team lead, eng lead
+  - UC2 SMB/Fragmented Lead: B2B confirmed via business_ownership signal despite no company name; Apollo/MCA miss → company_verified: false; COLD card with qualification prompt; upgrade path via GST → re-score
+  - UC3 Low-Signal/Noise: Message Parser returns proceed: false; pipeline stops at Step 2; no enrichment API called; no salesperson card; discard logged in intake_event_log
+  - Cross-use-case stakeholder matrix added
+  - Covers JIRA Epic 0.1 "Define core use cases" acceptance criteria (3 use cases with inputs, outputs, stakeholders)
+  - Also covers previously flagged gap: "Document low-intent lead journey"
+
+---
+
+## [2026-05-19] analysis | Operational and Business KPIs — Epic 0.1
+
+- File: wiki/analyses/operational-business-kpis.md (NEW)
+- Question: What are the operational KPIs (system health) and business KPIs (value delivery), and how are they measured?
+- Tags: kpis, operational, business, metrics, monitoring, dashboard, mvp
+- Sources consulted: 2026-lead-intelligence-engine-reference, scoring-quality-metrics, governance-observability-layer, devops-controls, observability-detail-spec, mvp-scope-sign-off, service-scaling-strategy, llm-operational-safeguards
+- Notes:
+  - 3-layer KPI architecture: Operational (OP1–OP7, engineering) → Scoring Quality (AP/C/AR, existing doc) → Business (BK1–BK6, product/management)
+  - OP1 Lead Processing Latency p95: target <120s, alert >300s; measured from pipeline_run timestamps
+  - OP2 LLM Call Latency p95: target <8s, alert >15s; measured from task_execution.duration_ms at score stage
+  - OP3 Pipeline Success Rate: target ≥98%, alert <95% over 1h; from quality_snapshots (not raw pipeline_run)
+  - OP4 Enrichment Provider Availability: per-provider targets (T1 ≥95%, T2 ≥90%, T3 ≥85%); from enrichment_quota + task_execution
+  - OP5 Background Job Completion Rate: alert on any job missing 2 consecutive windows; sla_breach_check → Critical if missing
+  - OP6 Cost per Lead: target <$0.05, alert >$0.10; from token usage logs + enrichment invoices
+  - OP7 Queue Depth: alert >200; from workflow engine queue (tool TBD)
+  - BK4 Scoring Lift confirmed = AP2 Discrimination Ratio (same metric, different audience)
+  - BK5 Salesperson Adoption ≥30% is prerequisite for BK3/BK4 statistical reliability
+  - Full mapping: every MVP sign-off condition from mvp-scope-sign-off §4 traced to specific KPI + query
+
+---
+
+## [2026-05-19] analysis | MVP Scope Sign-Off — Epic 0.1
+
+- File: wiki/analyses/mvp-scope-sign-off.md (NEW)
+- Question: Define MVP scope boundaries: what is included, explicitly excluded, and sign-off criteria for first production release
+- Tags: mvp, scope, planning, sign-off, non-goals, deferred
+- Sources consulted: 2026-lead-intelligence-engine-reference, orchestration-layer-spec, future-optional-agents, adaptive-scoring-strategy-b2b-b2c, enrichment-tools-integration, meta-integration-implementation, security-planning, tech-stack-research
+- Notes:
+  - MVP definition: 3 POC tenants (Gamoft B2B, Urvee Organics B2C, Govmen TBD) end-to-end with measurable quality improvement
+  - In scope: Pipeline 1 + Pipeline 2, 6 channels (WA/IG/FB DM/Lead Ads/Sheets/Email), 9 enrichment providers, all delivery surfaces, full security/governance, DevOps
+  - LinkedIn deferred; Adaptive Signal Lifecycle deferred to Month 3+; Recommendation Agent Month 3+; Workflow Agent Month 6+; self-serve onboarding post-MVP
+  - Hard non-goals (forever): no scraping, no credentials in DB, no raw PII to viewer role, no cross-tenant access
+  - POC success requires 2 consecutive weeks: ≥80% pipeline coverage, ≥85% bucket stability, <2% failure rate, ≥80% HOT SLA, Scoring Lift >1.5, team lead sign-offs
+  - Govmen dependency: full onboarding blocked until tenant interview; Gamoft + Urvee Organics can reach POC success without Govmen
+
+---
+
+## [2026-05-19] analysis | DevOps Controls — Epics 0.6–0.9
+
+- File: wiki/analyses/devops-controls.md (NEW)
+- Tags: devops, feature-flags, monitoring, dashboard, throttling, caching, scheduler, alerting, onboarding
+- Notes:
+  - 0.6 Onboarding: feature_flags JSONB on tenant_config (no external flag service); 3-step rollout (Gamoft → 1 POC → all → remove); Pipeline 2 failure alert spec with action_required field; 8 onboarding-specific audit log events (flag changes most important)
+  - 0.7 Orchestration: ops dashboard (10 panels, real-time + quality_snapshots) vs tenant quality dashboard (7 panels, quality_snapshots only); job tracking primary = workflow engine UI; background job drift detection via missing log event within 2× window
+  - 0.8 Data Acquisition: enrichment is per-lead (no batch); 8 background jobs with schedules; enrichment_quota Postgres table with 90% threshold skip; daily enrichment health snapshot job; provider success rate <50% → High alert
+  - 0.9 Context Construction: in-memory TTLCache (cachetools, 15-min TTL, no Redis at MVP); cache key = (tenant_id, prompt_template_version); force-flush CLI with Postgres NOTIFY; prompt version rollback procedure; validation failure rate >5% → High alert; logged to app log + task_execution
+
+---
+
+## [2026-05-19] analysis | Observability Detail Specification — Epic 0.11
+
+- File: wiki/analyses/observability-detail-spec.md (NEW)
+- Tags: observability, logging, tracing, alerting, autoscaling, backup, recovery
+- Sources consulted: governance-observability-layer, orchestration-layer-spec, service-scaling-strategy, tech-stack-research, llm-operational-safeguards, security-planning
+- Notes:
+  - Step-level logging: full structured JSON log event catalog for Pipeline 1 (7 stages × N events), Pipeline 2 (4 stages), and 4 background jobs; PII-never-in-logs rule enforced
+  - Trace correlation: correlation_id = pipeline_run.id propagated via HTTP X-Correlation-ID header + Temporal context + every log line and lineage row; CloudWatch Logs Insights query pattern documented
+  - Replay/debug: inspect_lineage CLI + rescore_lead --from-stage CLI; dry-run batch_rescore for staging prompt testing; per-stage replay avoids wasting enrichment API quota
+  - Alert thresholds: 8 operational alerts (Critical→Low, named owner + response SLA), 7 infra alerts, 4 post-Month-1 quality alerts; alert delivery resolved via security-planning
+  - Autoscaling: Ingestion 100 req/min/task (max 10 tasks); Orchestration 70% CPU (max 8, 600s scale-in cooldown); Reporting 60% CPU (max 4); Aurora ACU 0.5–4
+  - Backup/recovery: Aurora 35-day PITR + monthly pg_dump → S3 Glacier; Temporal daily pg_dump → S3 (7-day retention); RTO 30s / RPO 5min; full recovery runbook for DB failure
+
+---
+
+## [2026-05-19] analysis | Security Planning — 5 Open Decisions Resolved
+
+- File updated: wiki/analyses/security-planning.md
+- All 5 previously open decisions are now locked:
+  - PII key rotation: manual at MVP; automate post-Month 3 or at 10+ tenants
+  - Alert delivery: email (SES/Resend) at MVP; Slack webhook post-Month 1
+  - Data retention: 2yr leads/pipeline/feedback, 5yr access_log, 1yr quality_snapshots (DPDP-compliant; must appear in privacy notice before Tenant 1 onboarding)
+  - lineage_record access: CLI script (inspect_lineage) at Pipeline 1 build time; promote to admin API in Month 2
+  - Clerk session: email+password + Google OAuth both enabled; no magic link, no SAML at MVP
+
+---
+
+## [2026-05-19] analysis | Security Planning — Epic 0.10
+
+- File: wiki/analyses/security-planning.md (NEW)
+- Question: Full security spec: auth, RBAC, API access rules, input sanitization, encryption policy, secrets management, PII masking, prompt logging sanitization, audit logging
+- Tags: security, auth, rbac, jwt, clerk, pii, encryption, secrets, audit, sanitization
+- Sources consulted: governance-observability-layer, tech-stack-research, context-construction-specification, delivery-integration-layer, channel-integration-layer, enrichment-tools-integration, llm-operational-safeguards
+- Notes:
+  - Story 1 (Auth + RBAC): Clerk Organizations API confirmed as auth provider; JWT claims (sub/org_id/org_role); FastAPI middleware pattern; 1-hour access token; full 4-role permission matrix; endpoint-level RBAC table for all API surfaces
+  - Story 2 (Data + API protection): Pydantic v2 extra="forbid" as input sanitization layer; E.164 phone validation; EmailStr; SQL injection not applicable (ORM only); HMAC-SHA256 two-step webhook validation; AES-256-GCM PII encryption (application layer, key in Secrets Manager); TLS 1.2+ everywhere; full 15-credential secrets vault inventory with vault path naming convention and rotation triggers
+  - Story 3 (LLM data safety): PII-in-user-message-only rule locked; per-enrichment-call minimum identity field table; prompt log sanitization (REDACTED substitution for all log output); lineage_record.input_snapshot stored encrypted, admin-only; audit log schema and full event trigger list; 5 security-specific alert conditions
+  - 5 open decisions remain: PII key rotation method, alert delivery channel, data retention per jurisdiction, lineage admin access UI, Clerk session UX
+
+---
+
 ## [2026-05-18] analysis | 6 Specification Documents — Context Construction, Prompt Orchestration, LLM I/O Contract, Adaptive Scoring B2B/B2C, Prompt Evaluation, Persona Classification
 
 - Files created/updated:
