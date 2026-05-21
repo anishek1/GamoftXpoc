@@ -4,6 +4,17 @@
 
 ---
 
+## [2026-05-20] analysis | Master Development Blueprint
+
+- File created: wiki/analyses/master-development-blueprint.md
+- Question answered: What is the complete agile build blueprint for the Multi-Tenant Adaptive Lead Intelligence Engine — what to build, in what order, and how to validate it?
+- Sections: (1) System Summary, (2) Architecture at a Glance (8 services, 2 pipelines, 5 LLM agents, tech stack, security model, data model, enrichment providers), (3) Epic Catalogue (9 epics, each with goal/capabilities/acceptance criteria/dependencies/wiki refs), (4) Build Sequence & Dependency Map (linear chain + cross-cutting thread visualization), (5) Sprint Plan (7 sprints, 3 developers, parallelism per sprint, no durations), (6) MVP Definition & POC Sign-Off (technical + business conditions, 2-consecutive-week requirement), (7) Pre-Build Prerequisites (13 items with blocking actions), (8) Deferred Decisions (14 items with unlock conditions + 4 hard limits), (9) Open Questions (9 items dev team resolves during build)
+- Key design decisions documented: PII encryption introduced in Epic 4 (not Epic 7); 8 services used (source doc contradiction noted); Inngest described as "current strong candidate, finalized Sprint 1" (not locked); AP1/AP2 require ~30 days of outcome data; POC sign-off earliest Month 2–3
+- Sources consulted: service-boundaries, orchestration-layer-spec, llm-io-contract, scoring-quality-metrics, execution-type-classification, lead-enrichment-architecture, delivery-integration-layer, security-planning, governance-observability-layer, observability-detail-spec, devops-controls, tech-stack-research, inngest-function-design, onboarding-flow-readiness, prompt-template-framework, meta-integration-implementation, core-use-cases, test-strategy, mvp-scope-sign-off, operational-business-kpis, api-contract, dev-environment-requirements, context-construction-specification, action-relevance-metrics
+- index.md updated
+
+---
+
 ## [2026-05-20] analysis | Dev Environment Requirements
 
 - File created: wiki/analyses/dev-environment-requirements.md
