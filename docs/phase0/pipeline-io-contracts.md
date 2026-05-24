@@ -540,7 +540,31 @@ Pipeline 1 runs per inbound lead. DM events (WhatsApp, Instagram DM, Facebook DM
 | `lead_completeness` | `float` | Yes | |
 | `needs_review` | `bool` | Yes | From Output Schema Layer |
 | `tenant_banding` | `{hot_min: int, warm_min: int}` | Yes | From active ConfigSet |
-| `disqualification_rules` | `DisqualRule[]` | Yes | Per-tenant; from ConfigSet |
+| `disqualification_rules` | `DisqualRule[]` | Yes | Per-tenant; from ConfigSet. See DisqualRule schema below. |
+
+**DisqualRule schema:**
+
+```python
+DisqualRule = TypedDict(
+    condition_type: Literal[
+        "serviceability_zero",   # lead.serviceability == 0
+        "geography_mismatch",    # lead.geography not in tenant ICP geography_focus
+        "role_mismatch",         # lead role matches disqualifying_profiles
+        "spam_pattern",          # message classified as student/spam/irrelevant
+    ],
+    effect: Literal["score_cap", "score_delta", "force_zero"],
+    value: int,          # cap floor for score_cap (e.g. 50); delta amount for score_delta (e.g. -30); 0 for force_zero
+    reason_label: str,   # written to disqualification_reason field on the lead
+)
+```
+
+Phase 1 generic rules (loaded for all tenants):
+- `serviceability_zero` → `score_cap(50)`, reason: "Outside serviceable area"
+- `geography_mismatch` → `score_delta(-30)`, reason: "Wrong geography"
+- `role_mismatch` → `score_delta(-40)`, reason: "Non-decision-maker"
+- `spam_pattern` → `force_zero(0)`, reason: "Student / spam / irrelevant"
+
+Per-tenant custom rules defined at tenant onboarding via `disqualifying_signals` field in IcpDefinition.
 
 **Disqualification Gate (runs before bucket assignment)**
 
@@ -556,7 +580,7 @@ Pipeline 1 runs per inbound lead. DM events (WhatsApp, Instagram DM, Facebook DM
 | Field | Type | Description |
 |---|---|---|
 | `bucket` | `enum("hot","warm","cold")` | Final bucket after disqualification adjustments |
-| `sla_deadline` | `datetime` | HOT = now + 24h; WARM = now + 48h (pending FIX-011); COLD = now + 7d |
+| `sla_deadline` | `datetime` | HOT = now + 24h; WARM = now + 48h; COLD = now + 7d |
 | `disqualification_applied` | `bool` | `true` if any disqualification rule fired |
 | `disqualification_reason` | `string \| null` | |
 | `routing` | `enum("deliver","human_review")` | `human_review` if `needs_review = true` or scoring failed |

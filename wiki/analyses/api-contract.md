@@ -188,7 +188,7 @@ Covers the 5-stage onboarding journey. See [[analyses/onboarding-flow-stage-map]
 **Sync:** Yes  
 **Purpose:** Get the tenant's full configuration including scoring weights, bucket thresholds, and operational settings.
 
-**Response (200):** Full `tenant_config` object — see [[analyses/client-config-schema-operational-defaults]] for schema.
+**Response (200):** Full `tenant_config` object — see [[analyses/client-config-schema-defaults]] for schema.
 
 Key fields:
 | Field | Type | Notes |
@@ -567,7 +567,58 @@ Key fields used:
 
 ---
 
-## 5. Users & Auth
+## 5. Channel Management
+
+---
+
+#### GET /v1/channels
+**Roles:** admin, team_lead  
+**Sync:** Yes  
+**Purpose:** List all channel connections for the tenant with their current status.
+
+**Response (200):** Array of `channel_connection` objects.
+| Field | Type | Notes |
+|---|---|---|
+| `channel_id` | uuid | |
+| `platform` | string | `"facebook"` / `"instagram"` / `"whatsapp"` / `"email"` |
+| `status` | string | `"active"` / `"expired"` / `"pending_verification"` / `"disconnected"` |
+| `last_event_at` | ISO 8601 / null | Last successfully ingested event |
+| `token_expires_at` | ISO 8601 / null | For Instagram (60-day expiry); null for non-expiring tokens |
+
+---
+
+#### POST /v1/channels/{channel_id}/refresh-token
+**Roles:** admin  
+**Sync:** Yes  
+**Purpose:** Manually trigger an Instagram long-lived token refresh. Use when `token_expires_at` is approaching or if the token was not auto-refreshed by the daily background job. For emergency ops use — the daily job handles routine refresh automatically.
+
+**Path param:** `channel_id` — must be an Instagram channel connection.
+
+**Response (200):**
+| Field | Type | Notes |
+|---|---|---|
+| `channel_id` | uuid | |
+| `token_expires_at` | ISO 8601 | Updated expiry after refresh (60 days from now) |
+| `refreshed_at` | ISO 8601 | |
+
+**Error (400):** If channel is not Instagram type — `"Token refresh only applies to Instagram channels"`  
+**Error (404):** Channel not found for this tenant  
+**Error (503):** Meta API unavailable — includes retry_after hint
+
+**Note:** Instagram long-lived tokens expire in 60 days. The daily background job refreshes any token with `expires_in < 604800` (7 days). This endpoint provides a manual override for ops without waiting for the background job.
+
+---
+
+#### DELETE /v1/channels/{channel_id}
+**Roles:** admin  
+**Sync:** Yes  
+**Purpose:** Disconnect a channel. Sets `channel_connection.status = 'disconnected'`. Does not delete historical leads captured from that channel.
+
+**Response (204):** No content.
+
+---
+
+## 6. Users & Auth
 
 ---
 
@@ -622,7 +673,7 @@ Key fields used:
 
 ---
 
-## 6. Prompt Management (Admin)
+## 7. Prompt Management (Admin)
 
 ---
 
@@ -670,7 +721,7 @@ Key fields used:
 
 ---
 
-## 7. Delivery & Notifications
+## 8. Delivery & Notifications
 
 ---
 
@@ -746,7 +797,7 @@ For `viewer`:
 
 ---
 
-## 8. Quality & Reporting
+## 9. Quality & Reporting
 
 ---
 
@@ -804,7 +855,7 @@ Snapshot object (key fields):
 
 ---
 
-## 9. Outbound Webhooks
+## 10. Outbound Webhooks
 
 ---
 
@@ -838,7 +889,7 @@ Snapshot object (key fields):
 
 ---
 
-## 10. Admin
+## 11. Admin
 
 ---
 

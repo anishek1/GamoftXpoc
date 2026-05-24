@@ -75,7 +75,7 @@ Five formal stages:
 **Pipeline 1 — Per-Lead Scoring** (continuous, per lead):
 `captured` → `fetched` → `enriched` → `normalised` → `scored` → terminal state
 
-Terminal states: `delivered` | `human_review` | `awaiting_clarification` | `insufficient_signal` | `failed`
+Terminal states: `delivered` | `existing_customer` | `human_review` | `awaiting_clarification` | `insufficient_signal` | `failed`
 
 ### Five LLM Agents
 
@@ -218,7 +218,8 @@ Truecaller · Apollo.io · Surepass (GSTN/CIN/PAN) · Probe42 · Tracxn · NewsC
   2. Message Parser (Haiku) — classifies as LEAD / NOISE / EXISTING_CUSTOMER / UNCLEAR; extracts structured fields for LEAD
 - NOISE path: `pipeline_stage = 'insufficient_signal'` set immediately; zero enrichment calls; zero LLM scoring calls; discard event written to `intake_event_log` with `discard_reason`; discard rate metric incremented
 - Webhook + polling hybrid: polling fallback fires when Meta webhook delivery is delayed or dropped; event deduplication by `platform_event_id` ensures idempotency at the DB write level; both mechanisms run in parallel — webhooks primary, polling is failsafe
-- EXISTING_CUSTOMER and UNCLEAR routing: open question — dev team defines during Sprint 3 (see Part 9)
+- EXISTING_CUSTOMER routing (locked 2026-05-22): `pipeline_stage = 'existing_customer'` (terminal); CRM sync event emitted; no scoring; no lead card created. See [[analyses/orchestration-layer-spec]] §8.1
+- UNCLEAR routing (locked 2026-05-22): `pipeline_stage = 'awaiting_clarification'`; lead paused; salesperson notified to send clarifying message; 24h timeout via workflow engine `waitForEvent`; exempt from crash recovery and score decay while paused
 - Deduplication: phone match wins; email second; name + location fallback; duplicate merged, not double-counted
 - Pre-flight validation: missing active persona → HALT; missing signal definitions → HALT; missing active prompt template → HALT
 - Pydantic validation on inbound payload: HTTP 422 on unknown or malformed fields
@@ -252,21 +253,21 @@ Truecaller · Apollo.io · Surepass (GSTN/CIN/PAN) · Probe42 · Tracxn · NewsC
   - Fallback chain fires on empty response (e.g. Apollo empty → Serper.dev)
   - `enrichment_quota` table updated per call; 90% threshold alert fired; provider skipped and signals recorded as `not_detected` at 100%
 - Normalisation stage: E.164 phone format, ISO 8601 dates, city-tier mapping (1 / 2 / 3), Title Case names
-- Signal extractors — all 13 types: deterministic (AUTOMATION execution type); each returns `(detected: bool, value: float, evidence: str)` for the same input every time
+- Signal extractors — all 13 types: deterministic (AUTOMATION execution type); each returns `(detected: bool, value: float, evidence: str)` for the same input every time (see [[analyses/signal-detection-rule-spec]] for named extractor definitions)
 - Rating Agent (Sonnet): receives `INPUT_SCHEMA` (lead data + signals + PersonaObject + prompt); returns `OUTPUT_SCHEMA` (score 0–100, bucket, sub-scores across 5 dimensions, `recommended_action` enum, `reasoning` sub-fields)
 - Output Schema Layer (HYBRID — deterministic wrapper around LLM output):
   - Banding enforcement: LLM-returned bucket overridden by tenant-configured thresholds (e.g. LLM returns `hot`, score = 72, HOT threshold = 80 → bucket overridden to `warm`)
-  - Completeness gate: `lead_completeness < threshold` → `needs_review = true` (threshold value is an open question — see Part 9)
+  - Completeness gate: `lead_completeness < **0.60**` → `needs_review = true` (threshold locked — team decision 2026-05-22; see [[analyses/llm-io-contract]])
   - Schema coercion: lowercase bucket values, round score to integer
 - Bucketize stage: score ≥ 80 → HOT; score ≥ 55 → WARM; score < 55 → COLD
-- Disqualification gate: geography penalty (−30), role mismatch penalty (−40), spam → force score to 0
+- Disqualification gate: geography penalty (−30), role mismatch penalty (−40), spam → force score to 0; rules are per-tenant `DisqualRule[]` typed config; stacking order: `force_zero` > `score_cap` > `score_delta`; clamped to 0 (see `DisqualRule` TypedDict schema in [[docs/phase0/pipeline-io-contracts]])
 - Intent gate: `intent_specificity = very_low` AND `fit = HIGH` → `pipeline_stage = 'awaiting_clarification'`; 24h timeout via workflow engine `waitForEvent`; salesperson notified to send clarifying message
 - `needs_review = true` → `pipeline_stage = 'human_review'`; lead routed to human review queue
-- Score decay background job: −10 points after 7 days, −20 after 14 days, auto-COLD after 30 days
+- Score decay background job: −10 points after 7 days, −20 after 14 days, auto-COLD after 30 days; delta adjustment (not full rescore); bucket recomputed after each decay event; new `lineage_record` written with `decay_reason`; SLA clock restarts only on bucket upgrade; `awaiting_clarification` leads exempt while paused (see [[concepts/score-decay]] for full locked mechanics)
 - SLA timers started at bucket assignment: HOT = 24h, WARM = 48h, COLD = weekly
 - Lineage write order (crash-safety): `lineage_record` → `task_execution` → `pipeline_run` → `pipeline_stage` (always last); Orchestration Service resumes from `pipeline_stage` on restart
 - PersonaObject TTLCache: 15-min TTL; force-flush via Postgres NOTIFY when prompt version changes
-- Per-tenant concurrency cap: max 2 concurrent scoring calls per tenant (configurable in tenant config)
+- Per-tenant concurrency cap: default **5** concurrent Scoring Agent calls per tenant (locked — team decision 2026-05-22); configurable via `tenant_config.concurrency_cap`
 
 **Acceptance Criteria:**
 - PII fields encrypted in DB; plaintext never visible in any log line (automated scan confirms `REDACTED`)
@@ -326,7 +327,7 @@ Truecaller · Apollo.io · Surepass (GSTN/CIN/PAN) · Probe42 · Tracxn · NewsC
   - Score Coverage, AP1–AP4, C1–C5, AR1–AR5, 3 Global KPIs (see [[analyses/scoring-quality-metrics]])
   - **AP1 and AP2 require ~30 days of outcome data — these metrics are not meaningful before Month 2**
 - `quality_snapshots` table: written per pipeline run; includes pipeline coverage, bucket stability, failed rate
-- Lineage audit: `access_log` append-only, 5-year retention; write failure does NOT halt the primary API request — emits a high-priority metric to CloudWatch instead
+- Lineage audit: `access_log` append-only, 5-year retention; write failure does NOT halt the primary API request — failure escalated via dead letter mechanism (3 retries at 30s / 5m / 30m; on exhaustion: `failed_audit_log` table insert + CRITICAL CloudWatch metric + admin alert); see [[analyses/security-planning]] §Dead Letter
 - Admin CLI suite (see [[analyses/observability-detail-spec]]):
   - `inspect_lineage <lead_id>` — full stage-by-stage trace with model, prompt_version, signals at each stage
   - `rescore_lead <lead_id> --from-stage <stage>` — re-run pipeline from a given stage without re-fetching or re-enriching upstream stages
@@ -534,7 +535,7 @@ Sprint 2 deliverable: Gamoft onboarded end-to-end; Pipeline 2 re-run works; prom
 - **Dev B:** Facebook DM + Lead Ads path (all 3 Meta surfaces) + email inbound + Google Sheets/CSV upload with LLM column mapping
 - **Dev C:** Two-stage filter (rule filter + Message Parser Haiku) + deduplication + pre-flight validation + `insufficient_signal` path + `intake_event_log` writes
 
-Sprint 3 key decision: **EXISTING_CUSTOMER and UNCLEAR routing defined by Dev C by mid-sprint** (see Part 9, Q4).
+Sprint 3 note: **EXISTING_CUSTOMER and UNCLEAR routing is RESOLVED (locked 2026-05-22):** EXISTING_CUSTOMER → `existing_customer` (terminal, CRM sync, no scoring); UNCLEAR → `awaiting_clarification`. Dev C implements per [[analyses/orchestration-layer-spec]] §8.1. No sprint decision required.
 
 Sprint 3 deliverable: All channels deliver leads to `captured`; NOISE exits cleanly with zero downstream calls; deduplication working; 60-day Instagram token refresh job running.
 
@@ -548,7 +549,7 @@ This is the most complex sprint — the entire pipeline core.
 - **Dev B:** Signal extractors (all 13 types) + normalisation stage + disqualification gate + Rating Agent (Sonnet) call via LiteLLM + Input/Output schema validation
 - **Dev C:** Output Schema Layer (banding, completeness gate, coercion) + bucketize + lineage write order + crash recovery + score decay job + SLA timers + `awaiting_clarification` flow + per-tenant concurrency cap
 
-Sprint 4 key decision: **`needs_review` threshold (0.60 or 0.75) locked before Dev C implements completeness gate** (see Part 9, Q5).
+Sprint 4 note: **`needs_review` threshold locked at 0.60** (team decision 2026-05-22). Dev C implements completeness gate with this value. See [[analyses/orchestration-layer-spec]] §4.3.
 
 Sprint 4 deliverable: Golden path 1 (HOT B2B) works end-to-end; crash recovery verified; PII confirmed encrypted (automated log scan clean).
 
@@ -639,7 +640,7 @@ These must be in place before Sprint 1 begins. Start immediately — some have u
 
 | Prerequisite | Blocks | Action |
 |---|---|---|
-| Meta developer app created; Embedded Signup configured; webhook domain registered; Facebook, Instagram, WhatsApp permissions approved | Epic 3 | Start now — Meta app review can take days |
+| Meta developer app created; Embedded Signup configured; webhook domain registered; Facebook, Instagram, WhatsApp permissions approved | Epic 3 | **Start immediately** — app review takes **2–7 days for a clean submission; Business Verification can take up to 60 days** — do not wait |
 | Clerk account: organisation created, JWT template configured, webhook endpoint registered | Epic 1 | Start now |
 | AWS account: Secrets Manager namespace, CloudWatch log groups, ECS Fargate cluster provisioned | Epic 1 | Start now |
 | Anthropic API key (production) | Epics 2, 4 | Start now |
@@ -648,6 +649,7 @@ These must be in place before Sprint 1 begins. Start immediately — some have u
 | **Probe42 credentials** — API access via support call; lead time unknown | Epic 4 | **Start immediately** |
 | Apollo.io account + API key | Epic 4 | Start now |
 | Truecaller Business API access | Epic 4 | Start now |
+| **IndiaMART / JustDial API access** — requires business verification; lead time unknown; confirm whether scraping restrictions apply | Epic 4 | **Start immediately** |
 | Govmen tenant interview completed | Epic 9 (Govmen onboarding) | Must complete before Sprint 7 |
 | Workflow orchestration decision (Inngest vs Temporal) | Epic 2+ | Finalize end of Sprint 1 |
 | Real-time delivery decision (Pusher vs Soketi) | Epic 5 | Finalize end of Sprint 1 |
@@ -692,13 +694,13 @@ These are genuine open decisions. Do not resolve them in this document — resol
 
 3. **Real-time delivery — Pusher vs Soketi:** Finalize by end of Sprint 1.
 
-4. **EXISTING_CUSTOMER and UNCLEAR routing:** Message Parser classifies DMs into LEAD / NOISE / EXISTING_CUSTOMER / UNCLEAR. NOISE → `insufficient_signal` is defined. What happens to EXISTING_CUSTOMER and UNCLEAR? Dev team defines routing logic during Sprint 3 before Dev C implements the filter.
+4. **EXISTING_CUSTOMER and UNCLEAR routing:** **RESOLVED 2026-05-22** — EXISTING_CUSTOMER → `existing_customer` (terminal, CRM sync, no scoring); UNCLEAR → `awaiting_clarification`. See [[analyses/orchestration-layer-spec]] §8.1 stage transitions.
 
-5. **`needs_review` threshold:** 0.60 or 0.75 — the completeness gate in the Output Schema Layer depends on this value. Lock before Sprint 4 implementation begins.
+5. **`needs_review` threshold:** **RESOLVED 2026-05-22** — locked at **0.60**. Completeness gate in Output Schema Layer: `lead_completeness < 0.60` → `needs_review = true` → `pipeline_stage = 'human_review'`.
 
-6. **E2E test environment:** Dedicated staging environment vs local Docker Compose. Decide before Sprint 7 implementation begins.
+6. **E2E test environment:** Dedicated staging environment vs local Docker Compose. Decide before Sprint 7 begins — E2E golden paths run in Sprint 7 and require the environment to be in place. (Deferred to development time per team decision 2026-05-22.)
 
-7. **LLM evaluation suite trigger policy:** Run on every PR, or only on PRs that change a prompt, signal definition, model version, or I/O schema version? Decide before Sprint 7 implementation begins. (Budget implication: each eval suite run costs real LLM tokens.)
+7. **LLM evaluation suite trigger policy:** **RESOLVED 2026-05-22** — only on PRs that change a prompt template, signal definition, LLM model version, or I/O schema version. Not on every PR. See [[analyses/test-strategy]].
 
 8. **Python testing framework:** pytest assumed. Confirm before Sprint 1 test scaffold.
 

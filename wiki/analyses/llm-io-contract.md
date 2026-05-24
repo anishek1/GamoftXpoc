@@ -479,7 +479,7 @@ The 7 fields the LLM returns. The Output Schema Layer adds `schema_version`, `pr
     },
     "additional_checks": [
       "banding_enforcement: if LLM bucket disagrees with score + thresholds, threshold-derived bucket wins; log discrepancy",
-      "needs_review_gate: if lead_completeness < configured threshold, override needs_review to true and route to human_review queue",
+      "needs_review_gate: if lead_completeness < 0.60, override needs_review to true and route to human_review queue",
       "schema_validation: all fields type-checked and coerced (bucket lowercased, score rounded to integer)"
     ]
   }
@@ -506,7 +506,7 @@ The signal_values section above reflects Gamoft's default signal set. Other tena
 
 | Decision | Status |
 |---|---|
-| `needs_review` threshold: 0.60 or 0.75 | TBD — team decision after Month 1 data |
+| `needs_review` threshold | **RESOLVED 2026-05-22** — locked at **0.60**. Output Schema Layer sets `needs_review = true` when `lead_completeness < 0.60`. |
 | `recommended_action` enum extension per tenant | TBD — global 7-value enum vs per-tenant extensions via PersonaObject |
 | Message Parser (Haiku) I/O contract | Deferred — Rating Agent contract takes priority; Message Parser contract to be written before DM path goes to production |
 | COMPANY_B2B_REQUIRED rule severity | Currently a warning (not hard stop) — may be elevated to hard stop after Phase 0 data reveals how often B2B enrichment fails |

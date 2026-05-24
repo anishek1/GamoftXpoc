@@ -4,6 +4,55 @@
 
 ---
 
+## [2026-05-22] fix | master-development-blueprint.md — resolved Q4, Q5, Q7
+
+- Part 9 Q4 (EXISTING_CUSTOMER/UNCLEAR routing) → marked RESOLVED
+- Part 9 Q5 (needs_review threshold) → marked RESOLVED, locked at 0.60
+- Part 9 Q7 (LLM eval trigger policy) → marked RESOLVED, only on prompt/signal/model/schema change PRs
+- Sprint 4 note updated to reflect locked threshold (was "0.60 or 0.75")
+
+---
+
+## [2026-05-22] fix | Pile C — Design gaps filled, external items flagged
+
+- **B9 WebSocket spec:** wiki/analyses/delivery-integration-layer.md — new §4.4 added: provider-agnostic WebSocket event envelope, channel naming (`private-tenant-{id}`, `private-user-{id}`), auth (Clerk JWT), deduplication rule, 5 event types
+- **B10 CRM COLD sync timing:** wiki/analyses/delivery-integration-layer.md — locked to "batched daily" (team decision 2026-05-22); timing exact schedule deferred to development
+- **B11 access_log dead letter:** wiki/analyses/security-planning.md — full mechanism defined: enqueue on failure, exponential backoff (30s / 5m / 30m), 3 retry max, escalation to `failed_audit_log` table + CRITICAL CloudWatch metric + admin alert, 5-year retention guaranteed
+- **P4 Instagram token refresh:** wiki/analyses/api-contract.md — new Section 5 (Channel Management) added with `GET /v1/channels`, `POST /v1/channels/{id}/refresh-token` (manual ops trigger), `DELETE /v1/channels/{id}`; old sections renumbered 6–11
+- **T2 Disqualification unit tests:** wiki/analyses/test-strategy.md — synthetic DisqualRule[] defined for test tenant with 4 rules and explicit unit test assertions (stacking order rule included)
+- **Remaining Pile C items (P1/P2/P3/P5/B6/T1) — not doc-fixable; flagged to team for external action**
+
+---
+
+## [2026-05-22] fix | Pile B — All specification decisions locked and applied
+
+- **B1 needs_review threshold = 0.60:** orchestration-layer-spec.md (completeness routing table + inline refs), llm-io-contract.md (Open Decisions + output schema check inline), test-strategy.md (caveats resolved)
+- **B2 crash recovery timeout = 15 min:** orchestration-layer-spec.md §8.3
+- **B3 concurrency cap = 5:** orchestration-layer-spec.md §4.2 + Open Decisions table
+- **B4 capability registry = YAML (git-versioned):** orchestration-layer-spec.md §7.1 + Open Decisions table
+- **B5 prompt storage = Database:** already correct in orchestration-layer-spec.md (loads from DB); no edit needed
+- **C2 EXISTING_CUSTOMER → existing_customer; UNCLEAR → awaiting_clarification:** orchestration-layer-spec.md stage transitions diagram + terminal states + Hard Blockers table; test-strategy.md integration test table (2 new rows)
+- **C3 score decay mechanics:** wiki/concepts/score-decay.md — locked: delta adjustment, bucket recompute, new lineage_record, SLA restarts on upgrade only, awaiting_clarification exempt
+- **C4 enriched_carrier_name:** docs/phase0/enrichment-to-llm-field-map.md — marked "deferred to development time"
+- **C5 Serper.dev -0.10 penalty removed:** docs/phase0/enrichment-to-llm-field-map.md — penalty removed; lead_completeness = detected/total formula only; serper_confidence still gates signal detection (< 0.5 → not_detected)
+- **B7 DisqualRule schema defined:** docs/phase0/pipeline-io-contracts.md — TypedDict schema with 4 condition_types, 3 effect types, generic Phase 1 rules documented
+- **B12 broken link fixed:** wiki/analyses/api-contract.md (Pile A, logged previously)
+- **T3 eval HOT regression:** test-strategy.md — deferred to Month 1 baseline (schema compliance 100% is the only pre-baseline hard gate)
+- **T4 E2E environment:** test-strategy.md — deferred to development time (Sprint 2 setup)
+- **T5 eval trigger policy:** test-strategy.md — only on prompt/signal/model/schema change PRs
+
+---
+
+## [2026-05-22] fix | Pile A — C1 / B12 / M1 / M2 verified
+
+- Fix C1 [CRITICAL]: wiki/analyses/orchestration-layer-spec.md §4.3 Stage 4 — replaced stale v1.0 `reasoning` string and free-text `recommended_action` with v1.1.0 structured `reasoning` object (primary_driver, signal_contributors, data_gaps, salesperson_note), `recommended_action: "call_immediately"` enum value, and `schema_version: "v1.1.0"`. Field description table rows for `reasoning` and `recommended_action` updated to match.
+- Fix B12 [MINOR]: wiki/analyses/api-contract.md line 191 — broken wiki link `[[analyses/client-config-schema-operational-defaults]]` corrected to `[[analyses/client-config-schema-defaults]]` (file exists; -operational-defaults file does not).
+- Fix M1 [MINOR]: docs/phase0/pipeline-io-contracts.md P1-S8 Bucketize — removed stale "(pending FIX-011)" parenthetical from `sla_deadline` WARM row. FIX-011 was resolved in a prior session (WARM SLA = 48h locked).
+- Verified M2: FIX-012 and FIX-013 confirmed applied — onboarding-flow-readiness.md carries RESOLVED marker; observability-detail-spec.md §1.1 shows "AWS CloudWatch Logs (Phase 1 locked)". No further action needed.
+- Pending: C4 (enriched_carrier_name decision — presented to user)
+
+---
+
 ## [2026-05-20] analysis | Master Development Blueprint
 
 - File created: wiki/analyses/master-development-blueprint.md

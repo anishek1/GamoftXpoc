@@ -21,10 +21,20 @@ A background job that automatically degrades lead scores over time when there is
 | No response for 14 days | Score -20 |
 | Dormant > 30 days | Auto-move to COLD bucket |
 
+## Decay Mechanics — Locked (team decision 2026-05-22)
+
+| Question | Decision |
+|---|---|
+| Delta vs full rescore | **Delta adjustment** — subtract 10 or 20 from current score. No LLM call; no re-enrichment. |
+| Bucket recompute | Yes — bucket is recomputed against tenant banding thresholds after each decay delta |
+| Lineage record | Yes — a new `lineage_record` is written after every decay event with `decay_reason` and the delta applied |
+| SLA impact | SLA clock **restarts only on bucket upgrade** (e.g., COLD→WARM or WARM→HOT). Decay alone does not restart the SLA clock. |
+| `awaiting_clarification` interaction | Leads in `awaiting_clarification` are **exempt from decay** while paused. Decay resumes when the lead exits that state. |
+
 ## Open Decisions
 
-- `[TBD]` — Decay job schedule (hourly vs daily)
-- `[TBD]` — Whether decay rules differ per tenant
+- `[TBD]` — Decay job schedule (hourly vs daily) — decide at development time
+- `[TBD]` — Whether decay rules differ per tenant — Phase 1 uses generic rules; per-tenant customisation deferred
 
 ## Why It Matters
 

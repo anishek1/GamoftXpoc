@@ -377,7 +377,7 @@ For interactive triggers: the orchestrator classifies the intent before doing an
                     └─────────────────────────────────────┘
 ```
 
-Each lead is processed in parallel (up to a concurrency cap of `[TBD — recommend 5]` simultaneous Scoring Agent calls). DM-path leads also have a Message Parser (Haiku) call earlier in the flow; Lead Ad events skip Steps 0–2 and enter at the Lead Enrichment stage.
+Each lead is processed in parallel (up to a concurrency cap of `5` simultaneous Scoring Agent calls — locked, team decision 2026-05-22; adjustable per tenant via `tenant_config.concurrency_cap`). DM-path leads also have a Message Parser (Haiku) call earlier in the flow; Lead Ad events skip Steps 0–2 and enter at the Lead Enrichment stage.
 
 ### 4.3 Stage Details
 
@@ -434,7 +434,7 @@ Standardises everything into a clean, consistent format before it goes to the Sc
 - Name → Title Case, no emojis
 - Location → city, state, country, tier (1 / 2 / 3)
 - Dates → ISO 8601 UTC
-- Product interest → mapped to internal taxonomy `[TBD per tenant]`
+- Product interest → mapped to internal taxonomy (tenant product catalog loaded during onboarding; exact mapping deferred to development time per tenant)
 
 Also assigns a **data completeness score** to the lead:
 
@@ -495,7 +495,17 @@ S2's intelligence layer design has defined the full output schema. Here it is, w
 {
   "score": 84,
   "bucket": "hot",
-  "reasoning": "Strong ICP fit and explicit high-intent signals (pricing, timeline, scope) from a multi-channel active lead — recommend immediate outreach.",
+  "reasoning": {
+    "primary_driver": "Explicit pricing and timeline language combined with a verified company profile drives a high-fit, high-intent score.",
+    "signal_contributors": [
+      { "signal": "pricing_request",   "dimension": "intent",      "direction": "positive", "weight": 25 },
+      { "signal": "timeline_mentioned","dimension": "intent",      "direction": "positive", "weight": 25 },
+      { "signal": "company_verified",  "dimension": "fit",         "direction": "positive", "weight": 25 },
+      { "signal": "revisit_count",     "dimension": "engagement",  "direction": "positive", "weight": 20 }
+    ],
+    "data_gaps": ["annual_revenue", "headcount"],
+    "salesperson_note": "High-intent B2B lead — verified company, explicit pricing request with 2-week timeline. Call immediately. Confirm budget authority before scheduling a demo."
+  },
   "lead_completeness": 0.87,
   "sub_scores": {
     "fit": 21,
@@ -504,9 +514,9 @@ S2's intelligence layer design has defined the full output schema. Here it is, w
     "behaviour": 12,
     "context": 9
   },
-  "recommended_action": "Call today — high intent, strong fit",
+  "recommended_action": "call_immediately",
   "needs_review": false,
-  "schema_version": "v1.0",
+  "schema_version": "v1.1.0",
   "prompt_version": "v1.3.0",
   "model": "claude-sonnet-4-6"
 }
@@ -518,10 +528,10 @@ S2's intelligence layer design has defined the full output schema. Here it is, w
 |---|---|---|
 | `score` | int (0–100) | The overall lead score |
 | `bucket` | string (lowercase) | `hot`, `warm`, or `cold` — the Output Schema Layer also validates this against the banding rule |
-| `reasoning` | string | One-line explanation of why the lead got this score |
+| `reasoning` | object | Structured 4-field object (schema v1.1.0): `primary_driver` (1-sentence dominant factor), `signal_contributors` (array of `{signal, dimension, direction, weight}`), `data_gaps` (array of undetected signal/field names), `salesperson_note` (plain-language note for the salesperson) |
 | `lead_completeness` | float (0.0–1.0) | How complete the enriched lead data was. **This is not LLM confidence.** It measures whether the Scoring Agent had enough data to work with — not how certain it is about its own reasoning. A score of 0.87 means 87% of expected signal fields were present and populated |
 | `sub_scores` | object | Per-dimension breakdown. Always included — never collapsed into a single number |
-| `recommended_action` | string | Specific suggested next step for the salesperson |
+| `recommended_action` | string enum | One of 7 locked values: `call_immediately`, `schedule_demo`, `send_pricing_deck`, `follow_up_scheduled`, `send_qualifying_message`, `nurture`, `archive` |
 | `needs_review` | bool | Set to `true` by the Output Schema Layer when `lead_completeness` is below the configured threshold. When `true`: score is still stored and the lead is still delivered — but it is also routed to the human review queue |
 | `schema_version` | string | Which version of the output schema this response conforms to |
 | `prompt_version` | string | Which prompt template was used. Enables attribution in the feedback loop |
@@ -570,13 +580,12 @@ Exact disqualification rules: `[TBD per tenant]`
 
 **Lead completeness routing (runs after bucketing):**
 
-The `needs_review` flag in the ScoringOutput (set by S2's Output Schema Layer) is what drives routing here. The Output Schema Layer reads `lead_completeness` and sets `needs_review = true` if it falls below a configured threshold. The orchestrator reads `needs_review` and acts on it.
+The `needs_review` flag in the ScoringOutput (set by S2's Output Schema Layer) is what drives routing here. The Output Schema Layer reads `lead_completeness` and sets `needs_review = true` if it falls below **0.60** (locked — team decision 2026-05-22). The orchestrator reads `needs_review` and acts on it.
 
-| Lead completeness | What happens | Why this threshold |
-|---|---|---|
-| ≥ 80% | Auto-assign bucket, write to output — no human needed | High completeness means the Scoring Agent had enough signal data and strong dimension coverage — human review adds no value |
-| 50–79% | Assign bucket but add a WARNING flag — salesperson can review | Moderate completeness means at least one dimension had weak or missing signals — the bucket is likely correct but worth a second look |
-| < 50% | `needs_review = true` — route to human review queue | Low completeness means the system was scoring from thin data and cannot reliably distinguish between buckets for this lead |
+| Lead completeness | What happens |
+|---|---|
+| ≥ 0.60 | Auto-assign bucket, write to output — no human needed |
+| < 0.60 | `needs_review = true` — route to human review queue (`pipeline_stage = 'human_review'`) |
 
 **What "human review queue" actually is:** There is no separate `human_review_queue` table. Human review is just a filtered view of the `leads` table where `pipeline_stage = 'human_review'`. S1 confirms the `lead` entity covers this — no additional table needed.
 
@@ -827,7 +836,7 @@ tools:    [data_gather, lead_enrichment, normalise, scoring_agent, bucketize]
 
 **Adding a new use case = one new registry entry. Zero orchestrator code changes.**
 
-Storage format: `[TBD — YAML / JSON / DB table]`
+Storage format: **YAML files, git-versioned alongside the service** (locked — team decision 2026-05-22). Loaded at service startup; no DB dependency. Adding a new use case = one new YAML entry; zero code changes.
 
 ### 7.2 Standard Call Format
 
@@ -906,32 +915,39 @@ Every lead has a `pipeline_stage` field. The orchestrator reads and writes this 
 
 ```
 captured
-  → fetched                after Data Gather completes (DM path: pre-filter gate runs here)
-    → insufficient_signal    [DM path only] pre-filter gate returns proceed: false —
+  → fetched                after Data Gather completes (DM path: Message Parser runs here)
+    → insufficient_signal    [DM path only] Message Parser returns NOISE (proceed: false) —
                               no scoreable signal detected in the message; pipeline
-                              terminates for this lead; record is stored with this
-                              stage for audit; no enrichment or scoring occurs.
+                              terminates for this lead; record stored for audit;
+                              no enrichment or scoring occurs.
                               See Use Case 3 in [[analyses/core-use-cases]] and
                               [[analyses/global-data-collection-architecture]] Section 2.
+    → existing_customer      [DM path only] Message Parser returns EXISTING_CUSTOMER —
+                              lead is routed to CRM sync; pipeline does not score;
+                              no salesperson lead card created; terminal.
+                              (locked — team decision 2026-05-22)
+    → awaiting_clarification [DM path] Two triggers:
+                              (a) Message Parser returns UNCLEAR — pause for more message
+                                  content; resume on next DM from same sender
+                              (b) Intent Gate: very_low intent + high fit score —
+                                  orchestrator sends clarification prompt via originating
+                                  channel; resumes at normalised on reply; 24h timeout
+                                  → scores with intent penalty, transitions to delivered.
+                                  See [[analyses/global-data-collection-architecture]] §9.
     → enriched             after Lead Enrichment completes (Lead Ad events enter here)
       → normalised         after Normalise completes
         → scored           after Scoring Agent returns valid output
 
-From scored, one of four outcomes:
+From scored, one of three outcomes:
   → delivered                bucket assigned, SLA set, written to salesperson output
-  → human_review             lead_completeness < 50% OR scoring failed after retries
-  → awaiting_clarification   very_low intent signal + high fit score; orchestrator sends
-                             a clarification prompt to the lead via the originating channel;
-                             pipeline is paused; resumes at normalised stage on reply;
-                             if no reply within 24 hours → scores with an intent penalty
-                             and transitions to delivered. See [[analyses/global-data-collection-architecture]]
-                             Section 9 (Intent Gate).
+  → human_review             lead_completeness < 0.60 OR scoring failed after retries
+  → awaiting_clarification   Intent Gate trigger (see above)
 
 From any non-terminal stage:
   → failed           retries exhausted
 ```
 
-**Terminal states:** `delivered`, `human_review`, `failed`, `insufficient_signal`
+**Terminal states:** `delivered`, `human_review`, `failed`, `insufficient_signal`, `existing_customer`
 
 **Non-terminal holding state:** `awaiting_clarification` — the lead is paused and waiting for input from the prospect. It must be treated as non-terminal by the concurrency guard: a lead in `awaiting_clarification` is not stale and must NOT be resumed by the crash-recovery path. The orchestrator distinguishes it from a crashed-run hold by checking whether the stage is exactly `awaiting_clarification` before applying the timeout logic in Section 8.3.
 
@@ -963,7 +979,7 @@ If pipeline_stage is awaiting_clarification:
     The 24-hour timeout is handled by a dedicated scheduled job, not here.
 
 If pipeline_stage is non-terminal (not terminal, not awaiting_clarification)
-  AND last_updated is older than [TBD: 15–30 min]:
+  AND last_updated is older than 15 minutes (locked — team decision 2026-05-22):
   → Resume. The previous run must have crashed.
 
 If pipeline_stage is non-terminal (not terminal, not awaiting_clarification)
@@ -1076,7 +1092,7 @@ The orchestrator sits between the data layer (S1) and the intelligence layer (S2
 
 | What is needed | Who delivers | Status |
 |---|---|---|
-| `leads.pipeline_stage` — exact field name and all accepted string values | S1 | **RESOLVED** — values locked by this document: captured → fetched → enriched → normalised → scored → delivered / human_review / awaiting_clarification / failed / insufficient_signal. `awaiting_clarification` added 2026-05-03 (Intent Gate, DM path). `insufficient_signal` added 2026-05-19 (pre-filter gate no-signal terminal state — planning audit FIX-003). S1 implements exactly these strings. |
+| `leads.pipeline_stage` — exact field name and all accepted string values | S1 | **RESOLVED** — values locked by this document: captured → fetched → enriched → normalised → scored → delivered / human_review / awaiting_clarification / failed / insufficient_signal / existing_customer. `awaiting_clarification` added 2026-05-03 (Intent Gate, DM path). `insufficient_signal` added 2026-05-19 (pre-filter gate no-signal terminal state — planning audit FIX-003). `existing_customer` added 2026-05-22 (Message Parser EXISTING_CUSTOMER classification routing — team decision). S1 implements exactly these strings. |
 | Data store for pipeline execution and lineage | S1 | **RESOLVED** — three entities confirmed: `pipeline_run` (run-level), `task_execution` (step-level), `lineage_record` (provenance). Orchestrator writes to all three after every stage. |
 | Scoring Agent output JSON schema | S2 | **RESOLVED** — schema locked at v1.1.0. Key fields: `score` (int), `bucket` (enum: hot/warm/cold), `reasoning` (structured object: primary_driver, signal_contributors[], data_gaps[], salesperson_note — NOT a string), `lead_completeness` (float 0.0–1.0), `sub_scores` (object), `recommended_action` (enum: 7 values), `needs_review` (bool), `schema_version`, `prompt_version`, `model`. See [[analyses/llm-io-contract]] v1.1.0. |
 | Signal `detection_rule` format and evaluation engine | S2 | **RESOLVED 2026-04-28** — named extractor + params. See [[analyses/signal-detection-rule-spec]]. |
@@ -1108,15 +1124,15 @@ Updated 2026-04-22 — items resolved by S1 entity catalog and S2 intelligence l
 | Onboarding / ICP / Signal Agent output schemas | S2 | **RESOLVED** — PersonaObject, IcpDefinition, and signal entity all defined |
 | Signal `detection_rule` format + evaluation engine | S2 | **RESOLVED 2026-04-28** — see [[analyses/signal-detection-rule-spec]]. |
 | Sub_scores field list | S2 | **RESOLVED 2026-05-03** — five fields matching the five dimensions: `fit`, `intent`, `engagement`, `behaviour`, `context`. The former `recency` field was a provisional placeholder with no corresponding dimension and is removed. |
-| Scoring Agent concurrency cap | Team | Recommend 5; team decision needed |
-| Timeout threshold for concurrency guard | Team | Recommend 15–30 min; team decision needed |
-| Capability registry storage format | Team | YAML / JSON / DB table — team decision |
+| Scoring Agent concurrency cap | Team | **RESOLVED 2026-05-22** — locked at 5 per tenant; adjustable via `tenant_config.concurrency_cap` |
+| Timeout threshold for concurrency guard | Team | **RESOLVED 2026-05-22** — locked at 15 minutes |
+| Capability registry storage format | Team | **RESOLVED 2026-05-22** — YAML files, git-versioned alongside service |
 | Tool invocation envelope — confirm the proposed shape | S1 + S2 | Still needs review from both sides |
 | Disqualification rules per tenant | Per tenant | Defined at tenant onboarding |
 | Bucket threshold calibration (after Month 1 data) | Team | Starting points locked (80/55/0); recalibrate after Month 1 using AP1/AP2 |
-| Pipeline 2 check-in cadence | Team | Suggest 2 weeks or monthly |
+| Pipeline 2 check-in cadence | Team | TBD (suggest 2 weeks or monthly) |
 | Alert delivery channel (chat / email / both) | Team | TBD |
-| Lead completeness threshold for needs_review | Team | S2 suggests 0.6 or 0.75 as starting options; team decision |
+| Lead completeness threshold for needs_review | Team | **RESOLVED 2026-05-22** — locked at 0.60 |
 
 ---
 

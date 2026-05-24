@@ -94,7 +94,9 @@ Mocked external I/O. Tests behavior at service and pipeline-stage boundaries.
 | Feature flag check | `enrichment.truecaller = false` | Truecaller not called; signals from Truecaller recorded as `not_detected` |
 | Pre-flight check on `onboarding` tenant | `tenant.status = 'onboarding'` | Pipeline 1 enqueues but does not execute |
 | Queue drain on activation | `tenant.status` transitions `onboarding` → `active` | All `captured` leads from event gap window are processed in order |
-| `needs_review` routing | `lead_completeness = 0.35`, threshold = 0.60 | `pipeline_stage = 'human_review'`; lead appears in human review queue |
+| `needs_review` routing | `lead_completeness = 0.35`, threshold = **0.60** (locked) | `pipeline_stage = 'human_review'`; lead appears in human review queue |
+| Message Parser → EXISTING_CUSTOMER | Haiku returns classification `EXISTING_CUSTOMER` | `pipeline_stage = 'existing_customer'` (terminal); no lead card created; CRM sync event emitted; scoring pipeline not entered |
+| Message Parser → UNCLEAR | Haiku returns classification `UNCLEAR` | `pipeline_stage = 'awaiting_clarification'`; lead paused; crash recovery exempt; no scoring until next DM or 24h timeout |
 | Audit log write failure | DB unavailable for `access_log` insert | Primary API request completes; failure emitted as high-priority metric |
 | Pydantic validation on inbound lead | Unknown field in `LeadIngestRequest` | HTTP 422; request rejected before application logic |
 
@@ -102,7 +104,7 @@ Mocked external I/O. Tests behavior at service and pipeline-stage boundaries.
 
 ### Layer 3 — E2E Tests
 
-Full pipeline execution against a dedicated test tenant. **No mocks.** The complete pipeline runs against real infrastructure (staging environment or local Docker compose — to be decided by team).
+Full pipeline execution against a dedicated test tenant. **No mocks.** The complete pipeline runs against real infrastructure. **E2E environment decision deferred to development time** — team decides between local Docker Compose and dedicated staging environment at Sprint 2 setup.
 
 Three mandatory golden paths, derived from [[analyses/core-use-cases]]:
 
@@ -227,6 +229,44 @@ Separate from the test pyramid. Runs against the real LLM provider. Does not rep
 - `prompt_template_version = "v1.0.0-test"` (locked, never changed by evaluation runs)
 - Bucket thresholds: HOT ≥ 80, WARM ≥ 55, COLD < 55
 
+**Disqualification rules for test tenant (synthetic — enables unit tests without waiting for tenant onboarding):**
+
+```json
+[
+  {
+    "condition_type": "serviceability_zero",
+    "effect": "score_cap",
+    "value": 50,
+    "reason_label": "Outside serviceable area"
+  },
+  {
+    "condition_type": "geography_mismatch",
+    "effect": "score_delta",
+    "value": -30,
+    "reason_label": "Wrong geography — lead outside India"
+  },
+  {
+    "condition_type": "role_mismatch",
+    "effect": "score_delta",
+    "value": -40,
+    "reason_label": "Non-decision-maker (student / intern)"
+  },
+  {
+    "condition_type": "spam_pattern",
+    "effect": "force_zero",
+    "value": 0,
+    "reason_label": "Spam or irrelevant message"
+  }
+]
+```
+
+Unit test assertions for these rules (at minimum):
+- `serviceability_zero` rule fires: score capped to 50 regardless of raw score input
+- `geography_mismatch` rule fires: score reduced by 30; if score < 0, clamped to 0
+- `role_mismatch` rule fires: score reduced by 40; clamped to 0
+- `spam_pattern` rule fires: score = 0; bucket = COLD; `disqualification_applied = true`
+- Multiple rules firing in sequence: effects stack; order of application is `force_zero` > `score_cap` > `score_delta`
+
 **Lead fixtures (synthetic, no real PII):**
 
 | Fixture | Bucket | `lead_completeness` | Path |
@@ -248,14 +288,13 @@ Separate from the test pyramid. Runs against the real LLM provider. Does not rep
 
 ## Caveats & Gaps
 
-- **`needs_review` threshold** is TBD (0.60 or 0.75). Unit tests for the completeness gate use a configurable placeholder. Update fixture and test assertion when team decides — see [[analyses/llm-io-contract]] open decisions.
+- **`needs_review` threshold** — **RESOLVED 2026-05-22** — locked at **0.60**. Update all fixture assertions to use `lead_completeness < 0.60` as the routing boundary.
 - **B2C E2E golden path** cannot be written until Urvee Organics persona is configured. `fixture_b2c_hot.json` is a placeholder.
-- **LLM evaluation thresholds** for HOT bucket regression and reasoning quality are TBD until Month 1 baseline data is available.
+- **LLM evaluation HOT bucket regression threshold** — **RESOLVED 2026-05-22** — TBD until Month 1 baseline. Schema compliance (100%) and sub-score sum (100%) are the only hard-block gates pre-baseline.
+- **LLM evaluation trigger policy** — **RESOLVED 2026-05-22** — eval suite runs only on PRs that change a prompt template, signal definition, LLM model version, or I/O contract version. Not on every PR.
 - **Disqualification rule unit tests** are tenant-specific and cannot be finalized until tenant onboarding configures the per-tenant rules.
-- **E2E environment** (staging vs local Docker compose) not decided. Decide before Sprint 2 begins.
+- **E2E environment** — deferred to development time (decide at Sprint 2 setup). Local Docker Compose is the recommended default; team confirms before Sprint 2 begins.
 
 ## Follow-up Questions
 
 - Which Python testing framework does the team prefer? (pytest is standard; confirm before scaffolding test directories)
-- Should E2E tests run against a dedicated staging environment or a local Docker compose stack?
-- Is there a budget cap for LLM evaluation suite runs per PR, or should evaluation only trigger on prompt/signal/model change PRs?

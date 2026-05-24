@@ -575,6 +575,18 @@ CREATE TABLE access_log (
 
 Following the governance layer rule: audit log write failures must NOT halt the primary operation. If `access_log` insert fails, the request completes normally. The failure is emitted as a high-priority metric (see [[analyses/governance-observability-layer]] §1). A dead letter mechanism retries failed audit log writes.
 
+**Dead letter mechanism (locked — 2026-05-22):**
+
+| Step | Behaviour |
+|---|---|
+| 1. Failure detected | `access_log` INSERT fails — primary request returns 200 as normal |
+| 2. Enqueue | Failed write payload is enqueued in a persistent retry queue (implementation: Postgres `audit_log_retry_queue` table or SQS queue — decide at development time) |
+| 3. Retry schedule | Retry 1 after 30 seconds; Retry 2 after 5 minutes; Retry 3 after 30 minutes (exponential backoff, max 3 retries) |
+| 4. Escalation | After 3 failed retries, the original payload is written to `failed_audit_log` table for manual review; a `CRITICAL` metric is emitted to CloudWatch; an alert is sent to admin (see security alert table above) |
+| 5. Data preservation | The failed write payload is never discarded — it persists in `failed_audit_log` until an admin confirms investigation. Compliance requires 5-year audit retention. |
+
+**What is retried:** The exact `access_log` row payload (timestamp, user_id, tenant_id, action, resource_type, resource_id, ip_address, outcome). No data is lost from the payload — it is the DB insert that failed, not the capture.
+
 **Audit log access:**
 
 - `admin` role only — via admin-specific API endpoints not accessible to other roles.

@@ -54,7 +54,7 @@ Each provider section shows:
 | NormalisedEvent field | Type | EnrichedLead property | LLM INPUT_SCHEMA field | Signal driven |
 |---|---|---|---|---|
 | `enriched_caller_name` | `str \| None` | `lead.name` | `lead.name` | — (used in salesperson note) |
-| `enriched_carrier_name` | `str \| None` | `lead.carrier` | — (not in INPUT_SCHEMA) | — |
+| `enriched_carrier_name` | `str \| None` | `lead.carrier` | — (not in INPUT_SCHEMA) | — (stored; LLM connection and signal definition deferred to development time) |
 | `enriched_carrier_country` | `str \| None` | `lead.geography` (country fallback) | `lead.geography` | `fit.serviceability` |
 | `enriched_phone_type` | `str \| None` | `lead.phone_type` | — (not in INPUT_SCHEMA; used in pre-filter gate) | — |
 
@@ -313,7 +313,7 @@ fit.industry_match (IndiaMART fallback):
 |---|---|---|---|---|
 | `enriched_serper_company_name` | `str \| None` | `company.name` (override if still null) | `company.name` | `fit.industry_match` |
 | `enriched_serper_industry_guess` | `str \| None` | `company.industry` (override if still null) | `company.industry` | `fit.industry_match` |
-| `enriched_serper_confidence` | `float` | `company.serper_confidence` | — | Used to set lead_completeness penalty |
+| `enriched_serper_confidence` | `float` | `company.serper_confidence` | — | Controls signal detection threshold (< 0.5 → treat as not_detected; no completeness penalty) |
 | `enriched_serper_source_url` | `str \| None` | `company.serper_source_url` | — | — |
 
 **Signal computation:**
@@ -322,10 +322,12 @@ fit.industry_match (IndiaMART fallback):
 fit.industry_match (Serper fallback):
   Same as Apollo computation — compare industry_guess against ICP industry list
   Serper_confidence < 0.5 → treat as "not_detected" (too uncertain to score)
-  Serper_confidence ≥ 0.5 → treat as low-confidence input; lead_completeness reduced by 10%
+  Serper_confidence ≥ 0.5 → signal detected; scored normally
 
-lead_completeness penalty for Serper use:
-  -0.10 flat penalty applied during P1-S5 Normalise step when company data came from Serper
+Note: No flat completeness penalty for Serper use (removed — team decision 2026-05-22).
+lead_completeness = detected_signals / total_signals across all providers.
+If Serper_confidence < 0.5, those signals count as not_detected, which already reduces
+completeness naturally via the formula.
 ```
 
 ---

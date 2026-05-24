@@ -239,6 +239,46 @@ S1's entity catalog confirms `notification_delivery` as a formal entity. It reco
 
 This entity is also queried by the AR1 (SLA Compliance) metric — the quality job checks `notification_delivery` records to verify that HOT lead alerts were sent, and then cross-references with salesperson action timestamps to measure whether they were acted on within the SLA window.
 
+### 4.4 Real-Time Delivery — WebSocket Message Spec (locked — 2026-05-22)
+
+The real-time delivery layer pushes events to connected clients over WebSocket. This spec is provider-agnostic (applies to Pusher, Soketi, or native WebSocket — tech stack decision deferred to development time).
+
+**Channel naming convention:**
+
+| Channel | Subscribers | What arrives |
+|---|---|---|
+| `private-tenant-{tenant_id}` | All users of a tenant | System-level events (pipeline failures, quality alerts) |
+| `private-user-{user_id}` | Individual salesperson or team lead | Personal events (HOT lead alerts, SLA breaches for their leads) |
+
+All channels are private (require auth token). Public channels are not used.
+
+**Connection auth:** Clerk JWT (same auth as REST API). Client presents JWT in the WebSocket handshake upgrade header. The server validates via the same Clerk JWT middleware used for REST endpoints. Invalid or expired JWT = connection refused (401).
+
+**Standard event envelope:**
+
+```json
+{
+  "event_type": "lead_scored | lead_updated | sla_breach | system_alert | awaiting_clarification",
+  "tenant_id": "string",
+  "user_id": "string | null",
+  "timestamp": "ISO 8601",
+  "payload": {
+    "lead_id": "string",
+    "bucket": "hot | warm | cold | null",
+    "recommended_action": "call_immediately | ... | null",
+    "alert_message": "string — human-readable (for system_alert type)"
+  }
+}
+```
+
+**Field rules:**
+- `user_id` is null for tenant-wide events; set for user-scoped events
+- `payload.bucket` is null for `system_alert` events
+- `payload.recommended_action` is null for `sla_breach` and `system_alert` events
+- `payload.alert_message` is only present for `system_alert` events
+
+**Deduplication:** Track by `{lead_id}:{event_type}:{tenant_id}` in `notification_delivery`. Same event does not re-push within a 5-minute window unless the underlying state changed (e.g., bucket changed).
+
 ---
 
 ## 5. Dashboards
@@ -331,7 +371,7 @@ When a lead is delivered (pipeline_stage = 'delivered'), the Delivery Layer can 
 |---|---|---|
 | HOT | Immediate push on delivery | HOT leads need to appear in the CRM before the 24h SLA clock starts |
 | WARM | Immediate push on delivery | Still time-sensitive within 48-hour window |
-| COLD | `[TBD — immediate vs. batched daily]` | Lower urgency; batching may be more efficient depending on volume |
+| COLD | **Batched daily** (locked — team decision 2026-05-22) | COLD leads have weekly nurture cadence; immediate push adds no urgency; daily batch reduces CRM API call volume. Batch job runs at end-of-day (exact schedule set at development time). |
 | human_review | Not pushed until resolved | Pushing unreviewed leads to CRM creates noise — wait for human to confirm bucket |
 | awaiting_clarification | Not pushed | Lead is paused awaiting clarification reply; pipeline has not completed; no score to push |
 | failed | Not pushed | Failed leads have no reliable score to push |
