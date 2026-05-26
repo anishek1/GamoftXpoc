@@ -78,12 +78,14 @@ The onboarding journey has five sequential stages. Stages 3 and 4 run partially 
 
 ---
 
-## Stage 3 — Business Profile & Persona Setup
+## Stage 3 — Business Profile & Persona Setup (Onboarding Agent)
+
+**UPDATED 2026-05-27:** Stage 3 is no longer a static form. It is a chat-based **Onboarding Agent** — a two-phase interface: optional document upload followed by a structured Q&A session (B2B: 12 questions, B2C: 10 questions, Hybrid: 14 questions). Every question is skippable; the tenant can resume on next login.
 
 **What happens (user-facing):**
-- User fills out a business profile form (business type, industry, description, target audience, geography, exclusions)
-- User submits the form
-- System queues Pipeline 2 and shows a progress indicator: *"Setting up your scoring intelligence..."*
+- Tenant optionally uploads business documents (PDFs, decks, brochures); agent extracts available info
+- Agent asks remaining unanswered questions one-by-one in chat (skippable)
+- When tenant submits (or skips remaining questions), Pipeline 2 is queued
 - User is **not blocked** — they can proceed to Stage 4 immediately
 
 **What happens (system — async, background):**

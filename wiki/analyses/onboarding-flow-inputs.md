@@ -80,43 +80,76 @@ Six fields are collected from the user across four onboarding stages. Stage 5 co
 
 ---
 
-## Stage 3 — Business Profile Inputs
+## Stage 3 — Business Profile Inputs (Onboarding Agent)
 
-This is the most complex input stage. The form collects six fields from the user. All other PersonaObject fields are LLM-inferred by the Persona Agent — they are never collected from the user.
+**UPDATED 2026-05-27:** Stage 3 is no longer a static 6-field form. It is a chat-based **Onboarding Agent** that collects tenant business information conversationally. The 6-field form is replaced by a two-phase chat interface: optional document upload followed by a structured Q&A session.
 
-### Fields Collected from User
+### Phase 1 — Document Upload (Optional)
 
-| Field | Source | Type | Required | Validation |
-|-------|--------|------|----------|------------|
-| `business_type` | User | enum | Yes | One of: `B2B`, `B2C`, `Hybrid`; collected first because it controls the adaptive label on `target_audience` |
-| `industry` | User | string | Yes | 3–100 characters; free text (no controlled vocabulary at MVP) |
-| `business_description` | User | string | Yes | 150–2000 characters; must describe what the business does, who it serves, and what it sells |
-| `target_audience` | User | string (multi-entry) | Yes | At least 1 entry required; label adapts per `business_type` (see below); each entry max 200 characters |
-| `geography_focus` | User | string (multi-entry) | Yes | At least 1 entry required; free text at MVP (country, city, or region); each entry max 100 characters |
-| `negative_profiles` | User | string (multi-entry) | Optional | Can be empty; describes lead types to exclude (e.g., "students", "job seekers"); each entry max 200 characters |
+The Onboarding Agent first prompts the tenant to upload business documents (PDFs, pitch decks, brochures, sales collateral). The agent extracts all available business information from the uploaded documents.
 
-**`target_audience` label adaptation:**
-- `business_type = B2B` → label: *"Who are your ideal customers? (describe the companies and roles you sell to)"*
-- `business_type = B2C` → label: *"Who are your ideal customers? (describe the type of person you sell to)"*
-- `business_type = Hybrid` → label: *"Who are your ideal customers? (describe both the businesses and individuals you sell to)"*; validation: at least one B2B entry AND at least one B2C entry must be present
+- Upload is optional — tenant can skip directly to Q&A
+- Agent processes documents and marks extracted information as answered on the question checklist
+- Extracted info reduces how many Q&A questions need to be asked
 
-**`business_description` minimum guidance shown to user:**
-The form displays helper text: *"Describe what your business does, who you serve, and what you sell or offer. A stronger description produces better lead scoring."* Minimum 150 characters is enforced; the UI shows a live character count.
+### Phase 2 — Q&A Chat (Fixed Question Checklist)
 
-### LLM-Strengthening Step (P2-1 HYBRID)
+The Onboarding Agent works through a fixed question checklist. Questions already answered by document extraction are skipped — the agent only asks what remains.
 
-After the user submits the Stage 3 form, the system performs a single LLM call to strengthen the `business_description` before passing inputs to the Persona Agent. This is the P2-1 HYBRID step in [[analyses/execution-type-classification]].
+**Q1 — Selector (always asked first):**
+*"Do you sell to businesses, individual customers, or both?"*
+- Answer determines which question set to use
 
-Flow:
-1. User submits the 6-field form
-2. System calls LLM with the raw `business_description` + `business_type` + `industry`
-3. LLM returns a strengthened description (expands vague phrases, fills obvious gaps, preserves user intent)
-4. System shows the user a confirmation screen: *"Here is how we interpreted your business description — does this look right?"*
-   - User approves → Persona Agent queued with the strengthened description
-   - User edits → edits captured; Persona Agent queued with the edited version
-5. Stage 4 unlocks; Pipeline 2 begins in the background
+**B2B Question Set (12 questions):**
+1. What does your business do, and what do you sell?
+2. What kind of companies are your best customers?
+3. How big are these companies usually?
+4. Who in the company usually buys from you?
+5. Is the buying decision usually made by one person, or do multiple people need to agree?
+6. Where are your customers usually based?
+7. How much does your product or service typically cost?
+8. How long does it usually take from first contact to a sale?
+9. When a business reaches out, what tells you they're genuinely serious?
+10. What kinds of businesses contact you that almost never end up buying?
+11. Are there certain times of year when you get more serious buyers?
+12. How do your salespeople usually communicate with leads?
 
-This step is transparent to the user. The original user-submitted description is preserved in storage alongside the strengthened version.
+**B2C Question Set (10 questions):**
+1. What does your business do, and what do you sell?
+2. Who are your typical customers?
+3. What problem are your customers usually trying to solve?
+4. Where are your customers usually based?
+5. How much does your product or service typically cost?
+6. How quickly do customers usually decide to buy?
+7. When someone reaches out, what tells you they're genuinely interested?
+8. What kinds of people contact you that rarely end up buying?
+9. Are there certain times of year when you get more serious buyers?
+10. How do your salespeople usually talk to leads?
+
+**Hybrid Question Set (14 questions):**
+*About business customers (5):* What you sell + company type + company size + decision maker + buying decision type
+*About individual customers (2):* Customer type + their situation
+*Shared (7):* Geography + deal size + sales cycle + what makes a serious lead + what makes a bad lead + seasonality + communication style
+
+### Behaviour Rules
+
+| Rule | Detail |
+|---|---|
+| **Skip** | Every question is skippable — tenant can skip one, some, or all |
+| **Resume** | Tenant can drop off and pick up where they left off on next login |
+| **Doc pre-fill** | Questions answered by uploaded docs are not re-asked |
+| **One question at a time** | Questions are asked sequentially in chat, not shown as a form |
+
+### Inference Flags on Skip
+
+Skipped questions reduce confidence in the PersonaObject. The system:
+- Still generates the PersonaObject with whatever was collected
+- Sets `inference_flags` on fields derived from missing answers
+- Shows the tenant a warning at end: *"You skipped X questions — your scoring may be less accurate. You can update this later."*
+
+### What This Feeds Into
+
+All data collected by the Onboarding Agent is handed to Pipeline 2. The Persona Agent (Step 1) takes this as input — not a 6-field form. The Onboarding Agent output is equivalent to what the 6-field form used to produce, but richer and more conversational.
 
 ### Fields Explicitly NOT Collected from User (LLM-Inferred)
 

@@ -59,6 +59,7 @@ source_count: 5
 
 ## Analyses
 
+- [[wiki/analyses/epic2-development-spec]] — Short precise dev spec for Epic 2: Onboarding Agent (chat flow, B2B/B2C/Hybrid), Pipeline 2 (4 steps), all agent prompts, Rating Agent prompt template, file map, unresolved conflicts | date: 2026-05-27 | status: ACTIVE
 - [[wiki/analyses/master-development-blueprint]] — Complete agile build blueprint: 9 epics with goals/capabilities/acceptance criteria, dependency map, 7-sprint plan (3 devs, no durations), pre-build prerequisites, deferred decisions, and 9 open questions for the dev team | date: 2026-05-20 | status: COMPLETE
 - [[wiki/analyses/dev-environment-requirements]] — Services, env vars, capabilities, and setup template skeleton a developer needs to run the system locally; covers locked decisions (Python/FastAPI, Clerk, Inngest, LiteLLM, AWS) and deferred decisions (Postgres hosting, real-time delivery) | date: 2026-05-20 | status: COMPLETE
 - [[wiki/analyses/api-contract]] — Complete REST API reference: 10 endpoint groups, every endpoint with method/path/roles/request/response/sync-async; OpenAPI-convention format; role permission summary; base URL conventions, auth header, pagination, error shapes | date: 2026-05-20 | status: COMPLETE

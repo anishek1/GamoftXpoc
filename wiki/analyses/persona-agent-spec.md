@@ -44,15 +44,19 @@ Without Persona Agent output, Pipeline 1 cannot run. The pre-flight check at eve
 
 ### Primary Inputs (always required)
 
+**UPDATED 2026-05-27:** Inputs are no longer collected via a 6-field form. They are provided by the **Onboarding Agent** (Stage 3) — a chat-based interface combining optional document upload and structured Q&A. The Persona Agent receives the Onboarding Agent's collected output as its input.
+
 | Input | Type | Source | Notes |
 |---|---|---|---|
 | `tenant_id` | string | Orchestrator | Identifies the tenant; scopes all output |
-| `business_description` | free text | Tenant (via P2-1 intake) | The tenant's own description of their business — strengthened by LLM during intake (see P2-1 in [[analyses/execution-type-classification]]) |
-| `business_type` | enum: B2B \| B2C \| Hybrid | Tenant (confirmed at intake) | Locked early; influences which signal dimensions are most relevant |
-| `industry` | string | Tenant | Sector context for ICP and signal relevance |
-| `target_roles` | list of strings | Tenant | Who the decision-makers and influencers are (B2B); or demographic profile (B2C) |
-| `geography_focus` | list | Tenant | Which regions or city tiers are in scope |
-| `negative_profiles` | list of strings | Tenant | Explicit exclusions: students, job seekers, resellers, etc. |
+| `business_type` | enum: B2B \| B2C \| Hybrid | Onboarding Agent (Q1 selector) | First question asked; determines which question set was used |
+| `business_description` | free text | Onboarding Agent (docs + Q&A answers) | Synthesised from uploaded documents and Q&A conversation; richer than a form field |
+| `industry` | string | Onboarding Agent | Inferred from conversation or doc extraction |
+| `target_roles` | list of strings | Onboarding Agent | Who the decision-makers and influencers are (B2B); or demographic profile (B2C) |
+| `geography_focus` | list | Onboarding Agent | Which regions or city tiers are in scope |
+| `negative_profiles` | list of strings | Onboarding Agent | Explicit exclusions described by tenant (bad leads, people who never buy) |
+| `skipped_questions` | list of strings | Onboarding Agent | Questions the tenant skipped — used to set `inference_flags` on uncertain fields |
+| `documents_uploaded` | boolean | Onboarding Agent | Whether docs were uploaded; affects how much was pre-answered vs asked |
 
 ### Re-run Inputs (only present on re-run)
 
@@ -233,7 +237,22 @@ Tenant inputs (+ optional re-run context)
 **Stored in:** `signal` table (S1 entity). Per-lead evaluation results stored in `signal_evaluation`.
 
 **After Step 3 completes — Prompt Template Generation (AUTOMATION):**  
-The orchestrator reads all signal definitions and generates the prompt template by creating one named slot per signal (`{signal_name}: {value}`). This is not a Persona Agent step — it is deterministic orchestration. The result is stored in `prompt_registry`.
+The orchestrator takes PersonaObject + IcpDefinition + Signal[] and fills a pre-written prompt template — injecting all tenant-specific data as literal values. This is deterministic code, not an LLM call. The result (a fully rendered string) is stored in `prompt_registry`.
+
+**prompt_registry storage shape (UPDATED 2026-05-27):**
+```json
+{
+  "tenant_id": "uuid",
+  "version": 3,
+  "created_at": "ISO-8601",
+  "pipeline_run_id": "uuid",
+  "prompt": "<full system prompt string>",
+  "is_active": true
+}
+```
+On re-onboarding: new row inserted, old row `is_active → false`. Historical scores remain explainable by joining to the version active at score time. Query always fetches `WHERE tenant_id = ? AND is_active = true`.
+
+**Validation before storing:** The code asserts WEIGHT_SUM = 1.0, THRESHOLD_ORDER (hot_min > warm_min), and SIGNAL_ALL_PRESENT before committing. An invalid prompt is not stored — Pipeline 2 halts and alerts admin.
 
 ---
 

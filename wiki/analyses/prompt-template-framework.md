@@ -689,7 +689,7 @@ The Output Schema Layer also performs three checks before storing:
 
 1. **Banding enforcement:** If the LLM's `bucket` does not match what the `score` + tenant thresholds would produce, the threshold-derived bucket wins. The discrepancy is logged. This ensures mathematical consistency between the score and the bucket regardless of what the LLM said.
 
-2. **needs_review gate:** If `lead_completeness` is below the configured threshold (currently 0.60 or 0.75 — team decision pending), the system overrides the LLM's `needs_review: false` with `true`. The lead is routed to the human review queue. It is still scored and still delivered — just flagged.
+2. **needs_review gate:** If `lead_completeness` is below **0.60** (locked 2026-05-22), the system overrides the LLM's `needs_review: false` with `true`. The lead is routed to the human review queue. It is still scored and still delivered — just flagged.
 
 3. **Schema validation:** All fields are type-checked and coerced (e.g., bucket string is lowercased, score is rounded to integer). If validation fails, the system retries once before returning a ScoringFailure.
 
@@ -729,7 +729,7 @@ These decisions affect how prompts are stored and managed but do not change the 
 |---|---|---|
 | **Prompt storage location:** in code (git-versioned) vs in the database (editable without deployment) | `[TBD — team decision]` | Git storage means a deployment is required every time a prompt is updated. DB storage allows hot changes but adds a management interface. Framework is the same either way. |
 | **Model config scope:** single global model vs per-tenant model override | `[TBD — team decision]` | If per-tenant overrides are supported, the CONTEXT section would include a model preference field that the system reads before making the API call. |
-| **needs_review threshold:** 0.60 (lenient) vs 0.75 (conservative) | `[TBD — team decision after Month 1 data]` | Affects how often low-completeness leads are routed to human review. Does not change the prompt template itself. |
+| **needs_review threshold** | **RESOLVED 2026-05-22** — locked at **0.60**. Output Schema Layer sets `needs_review = true` when `lead_completeness < 0.60`. | Affects routing frequency. Does not change the prompt template itself. |
 | **Per-tenant signal count:** number of signals per dimension | Intent ≥5, Engagement ≥6 confirmed; others TBD per tenant | More signals = longer CONTEXT section = higher token count per system message. Caching partially offsets this, but very large signal sets may push the system message toward context window limits. |
 
 ---
@@ -753,7 +753,7 @@ These decisions affect how prompts are stored and managed but do not change the 
 - **Samples cover Rating Agent only.** The Message Parser and Persona Agent prompt structures follow the same four-section framework but are not shown here. Writing those samples is a separate task.
 - **Samples use `new` variant only.** The `returning` and `rescore` variant structures (prior score and touchpoint history injection) are described in Section 4 but not demonstrated with full examples.
 - **Signal weights in samples are illustrative.** The actual signal weights for the Gamoft tenant are set by the Persona Agent during onboarding. The weights shown in Sample 1 are representative starting points.
-- **needs_review threshold is not yet confirmed.** The framework describes what happens at both 0.60 and 0.75 thresholds; the actual value is a team decision pending Month 1 data. See [[analyses/rating-agent-spec]] Open Decisions.
+- **needs_review threshold locked at 0.60** (RESOLVED 2026-05-22). See [[analyses/llm-io-contract]] Open Decisions and [[analyses/rating-agent-spec]].
 - **Prompt storage format is not yet decided.** The framework describes what the prompts contain, not where they are stored (code vs database). See Open Decisions above.
 
 ---

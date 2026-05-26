@@ -4,6 +4,37 @@
 
 ---
 
+## [2026-05-27] analysis | epic2-development-spec — Short precise dev spec filed
+
+- Filed: `wiki/analyses/epic2-development-spec.md`
+- Covers: Onboarding Agent chat flow, B2B/B2C/Hybrid question routing, Pipeline 2 all 4 steps, all agent I/O, prompt_registry, Rating Agent, file map, unresolved conflicts
+- Index updated
+
+---
+
+## [2026-05-27] analysis | Pipeline 2 — Prompt Generation Step & Rating Agent Prompt Template
+
+- **Topic:** Designed the final step in Pipeline 2 (prompt generation) and the Rating Agent prompt template structure
+- **Key decisions:**
+  - Prompt generation = deterministic code (no LLM); fills template from PersonaObject + IcpDefinition + Signal[]
+  - Rating Agent system prompt = full tenant-specific blob stored in `prompt_registry` (versioned, `is_active` flag)
+  - `needs_review` threshold confirmed at 0.60 (consistent with 2026-05-22 resolution)
+  - Tone confirmed for Outreach Agent only — not Rating Agent (conflicts existing design; flagged)
+  - Stage 3 redesigned from 6-field form to chat-based Onboarding Agent
+- **Files updated:**
+  - `wiki/analyses/rating-agent-spec.md` — needs_review RESOLVED; two architectural conflicts flagged
+  - `wiki/analyses/prompt-template-framework.md` — needs_review RESOLVED; gate threshold updated
+  - `wiki/analyses/onboarding-flow-inputs.md` — Stage 3 rewritten for Onboarding Agent (chat + doc upload)
+  - `wiki/analyses/onboarding-flow-stage-map.md` — Stage 3 description updated
+  - `wiki/analyses/persona-agent-spec.md` — inputs updated to Onboarding Agent; prompt_registry versioning schema added
+  - `temp notes.md` — Rating Agent prompt template, data injection map, user message schema, prompt_registry shape added
+- **Conflicts flagged (not resolved):**
+  - Signal evaluation: P1-2b deterministic extraction (existing) vs Rating Agent self-evaluation from lead JSON (session design)
+  - Tone scope: Rating Agent salesperson_note (existing) vs Outreach Agent only (session design)
+- **Notes:** Both conflicts require team decision before Rating Agent prompt is written to production
+
+---
+
 ## [2026-05-22] fix | master-development-blueprint.md — resolved Q4, Q5, Q7
 
 - Part 9 Q4 (EXISTING_CUSTOMER/UNCLEAR routing) → marked RESOLVED

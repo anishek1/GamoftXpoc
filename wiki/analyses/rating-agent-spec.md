@@ -388,8 +388,10 @@ LLM cost metering at the per-call level is required for tenant-level cost attrib
 | Primary LLM provider | **RESOLVED 2026-05-03** — Anthropic Claude Sonnet 4.6 (primary); OpenAI GPT-4o via LiteLLM as fallback only. See [[analyses/tech-stack-research]]. |
 | Model config scope: global vs per-tenant override | `[TBD — team decision]` |
 | Prompt storage: in code (git-versioned) vs data layer (editable without deployment) | `[TBD — team decision]` |
+| **[CONFLICT] Signal evaluation approach** | **Two designs exist and must be reconciled.** (A) Existing wiki: P1-2b deterministic extractors produce `signal_values` dict → Rating Agent receives pre-computed values → LLM applies holistic judgment. (B) Session 2026-05-27 design: full signal definitions baked into Rating Agent system prompt → Rating Agent evaluates signals itself from raw lead JSON. Design (A) is more auditable and separates concerns cleanly. Design (B) is simpler but shifts evaluation responsibility to the LLM. **Team decision required before Rating Agent prompt is written.** |
+| **[CONFLICT] Tone scope** | **Two designs exist.** (A) Existing wiki: `tone` from PersonaObject controls the `salesperson_note` register in Rating Agent output. (B) Session 2026-05-27 design: tone goes to Outreach Agent only; Rating Agent has no `salesperson_note`. If Design (B) is chosen, `salesperson_note` is removed from the Rating Agent output schema and the llm-io-contract.md must be updated. **Team decision required.** |
 | sub_scores field list | **RESOLVED 2026-05-03** — 5 fields: `fit`, `intent`, `engagement`, `behaviour`, `context`. `recency` removed (not a dimension). |
-| needs_review threshold: 0.6 (lenient) or 0.75 (conservative) | `[TBD — team decision after Month 1]` |
+| needs_review threshold | **RESOLVED 2026-05-22** — locked at **0.60**. Output Schema Layer sets `needs_review = true` when `lead_completeness < 0.60`. See [[analyses/llm-io-contract]]. |
 | Per-tenant concurrency cap starting value | Recommend 2 per tenant; `[team decision based on provider rate limits]` |
 | Bucket disagreement logging: log only vs surface as dashboard alert | `[TBD — team decision]` |
 

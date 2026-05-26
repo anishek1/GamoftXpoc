@@ -22,7 +22,8 @@
       "WebFetch(domain:free-docs.newscatcherapi.com)",
       "WebFetch(domain:www.postman.com)",
       "Skill(xlsx)",
-      "Bash(not exist *)"
+      "Bash(not exist *)",
+      "Bash(Test-Path *)"
     ]
   }
 }
