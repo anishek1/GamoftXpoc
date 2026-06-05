@@ -23,7 +23,8 @@
       "WebFetch(domain:www.postman.com)",
       "Skill(xlsx)",
       "Bash(not exist *)",
-      "Bash(Test-Path *)"
+      "Bash(Test-Path *)",
+      "WebFetch(domain:urveeorganicfarms.com)"
     ]
   }
 }

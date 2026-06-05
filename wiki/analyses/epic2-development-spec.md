@@ -11,7 +11,7 @@ sources_consulted:
   - "[[analyses/prompt-template-framework]]"
   - "[[analyses/llm-io-contract]]"
   - "[[analyses/signal-detection-rule-spec]]"
-status: ACTIVE — working spec
+status: ACTIVE — working spec; v2 2026-06-05: single hybrid question set (11q, no routing), Persona Agent user message updated (BUSINESS TYPE dropped, customer section merged)
 ---
 
 # Epic 2 — Development Spec
@@ -21,6 +21,7 @@ status: ACTIVE — working spec
 ---
 
 ## File Map
+
 
 | What | File |
 |---|---|
@@ -54,66 +55,27 @@ status: ACTIVE — working spec
 
 ### Phase 2 — Q&A Chat
 
-**First message always asked:**
-> "Do you sell to businesses, individual customers, or both?"
-
-Answer routes to one of three question sets. Questions are asked one at a time. Every question is skippable. Session state persisted — tenant can resume on next login. Questions pre-answered by docs are silently skipped. At end: if > 3 questions skipped, warn tenant scoring may be less accurate.
+One question set, asked to all tenants. No routing. Questions are asked one at a time. Every question is skippable. Session state persisted — tenant can resume on next login. Questions pre-answered by docs are silently skipped. At end: if > 3 questions skipped, warn tenant scoring may be less accurate. The Persona Agent infers business type (B2B / B2C / Hybrid) from the answers.
 
 ---
 
-### B2B Question Set — 12 Questions
+### Single Hybrid Question Set — 11 Questions
 
-1. What does your business do, and what do you sell?
-2. What kind of companies are your best customers? (e.g., software companies, manufacturing firms)
-3. How big are these companies usually? (e.g., 10–50 employees, 500+ employees)
-4. Who in the company usually buys from you? (e.g., the CEO, the IT manager, the Head of Sales)
-5. Is the buying decision usually made by one person, or do multiple people need to agree?
-6. Where are your customers usually based?
-7. How much does your product or service typically cost? (e.g., ₹20,000 one-time, ₹5,000/month)
-8. How long does it usually take from when someone first contacts you to when they actually buy?
-9. When a business reaches out, what do they say or do that tells you they're genuinely serious?
-10. What kinds of businesses contact you that almost never end up buying?
-11. Are there certain times of year when you get more serious buyers?
-12. How do your salespeople usually communicate with leads? (e.g., formal and professional, friendly and consultative, quick and direct)
+| # | Question | maps_to |
+|---|---|---|
+| q01 | What does your business do, and what do you sell? | `business_description` |
+| q02 | Who are your best customers? Describe them as specifically as you can. (e.g., "software companies with 20–100 employees", or "first-time homebuyers aged 28–45") | `customer_profile` |
+| q03 | Tell me more about a typical customer. If you sell to businesses: what's their usual company size and who in the company makes the buying decision? If you sell to individuals: what's their typical life situation and the problem they came to you to solve? If you sell to both, answer for each. | `customer_detail` |
+| q04 | When a customer is ready to buy, is the decision usually made by one person, or do multiple people need to agree? | `decision_complexity` |
+| q05 | Where are your customers usually based? | `geography` |
+| q06 | How much does your product or service typically cost? (If pricing differs for businesses vs individuals, describe both.) | `ticket_size` |
+| q07 | How long does it usually take from when someone first contacts you to when they actually buy? | `sales_cycle` |
+| q08 | When someone reaches out, what do they say or do that tells you they're genuinely serious? | `positive_signals` |
+| q09 | What kinds of customers contact you that almost never end up buying? | `negative_signals` |
+| q10 | Are there certain times of year when you get more serious buyers? | `seasonality` |
+| q11 | How do your salespeople usually communicate with leads? (e.g., formal and professional, warm and friendly, straight to the point) | `communication_style` |
 
----
-
-### B2C Question Set — 10 Questions
-
-1. What does your business do, and what do you sell?
-2. Who are your typical customers? (e.g., age range, lifestyle, type of person)
-3. What problem are your customers usually trying to solve when they contact you?
-4. Where are your customers usually based?
-5. How much does your product or service typically cost?
-6. How quickly do customers usually decide to buy after first contacting you?
-7. When someone reaches out, what do they say or do that tells you they're genuinely interested?
-8. What kinds of people contact you that rarely end up buying?
-9. Are there certain times of year when you get more serious buyers?
-10. How do your salespeople usually talk to leads? (e.g., warm and friendly, straight to the point, professional)
-
----
-
-### Hybrid Question Set — 14 Questions
-
-*About your business customers:*
-1. What does your business do, and what do you sell?
-2. What kind of companies are your best business customers? (industry, type)
-3. How big are these companies usually?
-4. Who in the company usually buys from you?
-5. Is the buying decision usually one person or multiple people?
-
-*About your individual customers:*
-6. Who are your typical individual customers? (age, lifestyle, type of person)
-7. What problem are they usually trying to solve when they contact you?
-
-*Shared:*
-8. Where are your customers usually based?
-9. How much does your product or service typically cost? (if pricing differs for businesses vs individuals, describe both)
-10. How long does it usually take from first contact to a sale? (for each type if different)
-11. When someone reaches out, what tells you they're genuinely serious?
-12. What kinds of people or businesses contact you that rarely end up buying?
-13. Are there certain times of year when you get more serious buyers?
-14. How do your salespeople usually communicate with leads?
+All questions skippable. q01 is the most critical — without a business description the Persona Agent has nothing to reason from; the UI warns if the tenant tries to skip it.
 
 ---
 
@@ -327,14 +289,15 @@ Return a single valid JSON object. No markdown. No explanation.
 ```
 [TASK]
 TENANT: <organization_name>
-BUSINESS TYPE: <B2B | B2C | Hybrid>
 
 --- WHAT THEY SELL ---
 <business_description>
 
 --- THEIR CUSTOMERS ---
-[B2B]  Type of companies: <answer> | Company size: <answer> | Decision maker: <answer> | Buying decision: <one person | committee>
-[B2C]  Type of person: <answer> | Their situation: <answer>
+Who they are: <customer_profile>
+Detail: <customer_detail>
+Decision-making: <decision_complexity_answer>
+Geography: <geography_answer>
 
 --- SALES DYNAMICS ---
 Typical deal size: <answer> | Typical sales cycle: <answer>

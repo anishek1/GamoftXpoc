@@ -4,6 +4,25 @@
 
 ---
 
+## [2026-06-05] analysis | epic2-scope-final — Final developer scope document filed
+
+- Filed: `wiki/analyses/epic2-scope-final.md`
+- 18 tasks across 4 groups (A1–A8, B1–B4, C1–C4, T1–T2)
+- Architectural decisions locked: signal evaluation Option A (pre-computed), tone excluded from Rating Agent, prompt_builder.py removed (Step 4 inlined into pipeline.py), single hybrid Q set (11q)
+- Index updated
+
+---
+
+## [2026-06-05] schema-update | epic2-development-spec — Single hybrid question set adopted
+
+- **Change:** Eliminated B2B/B2C/Hybrid routing model and three separate question sets (12q / 10q / 14q)
+- **Replaced with:** Single universal hybrid question set — 11 questions, no selector question, no routing logic
+- **Files updated:** `wiki/analyses/epic2-development-spec.md` (Stage 3 Q&A section + Persona Agent user message template), `wiki/analyses/onboarding-flow-stage-map.md` (Stage 3 question count reference)
+- **Persona Agent impact:** `BUSINESS TYPE:` line dropped from user message template; Persona Agent now infers business type from q02/q03 answers; `--- THEIR CUSTOMERS ---` section restructured to merged format
+- **Downstream tasks affected:** A3 (`questions.py`) — single dict only; A4 (`onboarding_agent.py`) — no routing logic needed; A5 (`doc_processor.py`) — maps to unified question IDs
+
+---
+
 ## [2026-05-27] analysis | epic2-development-spec — Short precise dev spec filed
 
 - Filed: `wiki/analyses/epic2-development-spec.md`

@@ -84,7 +84,7 @@ The onboarding journey has five sequential stages. Stages 3 and 4 run partially 
 
 **What happens (user-facing):**
 - Tenant optionally uploads business documents (PDFs, decks, brochures); agent extracts available info
-- Agent asks remaining unanswered questions one-by-one in chat (skippable)
+- Agent asks remaining unanswered questions one-by-one in chat (skippable); 11 questions, single universal set — no routing by business type
 - When tenant submits (or skips remaining questions), Pipeline 2 is queued
 - User is **not blocked** — they can proceed to Stage 4 immediately
 
