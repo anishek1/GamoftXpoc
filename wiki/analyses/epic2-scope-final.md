@@ -18,8 +18,9 @@ status: FINAL — approved for Sprint 2 development
 
 Out of scope for this epic:
 - Epic 1 — auth, Clerk JWT, RBAC, multi-tenancy shell
-- Epic 3 — Pipeline 1, Rating Agent runtime, scoring execution
-- Epic 4 — dashboard, reporting, lead feed UI
+- Epic 3 — lead ingestion, channel connectors, webhooks, two-stage filter
+- Epic 4 — Pipeline 1 core: enrichment, signal extraction, Rating Agent runtime, scoring execution
+- Epic 5 — delivery, salesperson UI, dashboard, reporting, lead feed
 - Frontend chat UI — consumed via the API; not built here
 
 ---
@@ -28,7 +29,7 @@ Out of scope for this epic:
 
 | # | Decision | Resolution |
 |---|---|---|
-| 1 | Signal evaluation in Rating Agent | **Option A** — Signal Extractor (Epic 3) pre-computes signal values and passes a `{signal_values: {dim: float}}` dict to the Rating Agent. The Rating Agent does not evaluate raw event JSON. `rating_template.py` uses `{signal_values}` as a placeholder — no signal extraction logic in the prompt. |
+| 1 | Signal evaluation in Rating Agent | **Option A** — Signal Extractor (Epic 4) pre-computes signal values and passes a `{signal_values: {dim: float}}` dict to the Rating Agent. The Rating Agent does not evaluate raw event JSON. `rating_template.py` uses `{signal_values}` as a placeholder — no signal extraction logic in the prompt. |
 | 2 | Tone scope in Rating Agent | **Excluded** — `tone` is stored in PersonaObject but is not injected into `rating_template.py`. Rating Agent output has no `salesperson_note` field. |
 | 3 | Prompt building | **Inlined into `pipeline.py` Step 4** — no separate `prompt_builder.py` file. Step 4 reads `rating_template.py`, fills placeholders with PersonaObject + IcpDefinition + Signal[], validates, stores in `prompt_registry`. |
 | 4 | Question set | **Single hybrid — 11 questions, no routing.** No selector question. No B2B/B2C/Hybrid split. Persona Agent infers business type from answers. |
@@ -110,9 +111,9 @@ Pipeline 2 runs asynchronously after the onboarding session is submitted. Steps 
 
 | Task | File | Responsibility | Depends on |
 |---|---|---|---|
-| C1 | `prompts/rating_template.py` | Rating Agent system prompt template. Static scaffolding with three variable placeholders: `{persona}` (PersonaObject JSON), `{icp}` (IcpDefinition JSON), `{signal_definitions}` (Signal[] JSON). **No `{tone}` placeholder. No `salesperson_note` in output schema.** Signal values passed at runtime by Epic 3 Signal Extractor — not in this template. | — |
+| C1 | `prompts/rating_template.py` | Rating Agent system prompt template. Static scaffolding with three variable placeholders: `{persona}` (PersonaObject JSON), `{icp}` (IcpDefinition JSON), `{signal_definitions}` (Signal[] JSON). **No `{tone}` placeholder. No `salesperson_note` in output schema.** Signal values passed at runtime by Epic 4 Signal Extractor — not in this template. | — |
 | C2 | `prompt_registry.py` | `store(tenant_id, prompt_str, pipeline_run_id) → version_id`: saves new prompt, sets `is_active = True`, deactivates prior version. `rollback(tenant_id, version_id)`: reactivates a prior version. `get_active(tenant_id) → str`: returns current active prompt. | A1, A2 |
-| C3 | `persona_cache.py` | `TTLCache(maxsize=500, ttl=900)`. Cache key: `(tenant_id, prompt_template_version)`. Listens for Postgres `NOTIFY tenant_persona_updated` → force-flushes affected tenant key. Used by Epic 3 Rating Agent to avoid per-request DB reads. | C2 |
+| C3 | `persona_cache.py` | `TTLCache(maxsize=500, ttl=900)`. Cache key: `(tenant_id, prompt_template_version)`. Listens for Postgres `NOTIFY tenant_persona_updated` → force-flushes affected tenant key. Used by Epic 4 Rating Agent to avoid per-request DB reads. | C2 |
 | C4 | `activation.py` | Stage 5 logic. Readiness check: (1) pipeline status = complete AND (2) ≥ 1 `ChannelConnection.status = active` for this tenant. If both pass: atomically sets `tenant.status = active`, enables Pipeline 1, drains FIFO queue of `captured` leads in order. If pipeline still running: returns pending status. If pipeline failed: returns failure reason, directs tenant to resubmit onboarding. | A2, C2 |
 
 ### Group T — Tests

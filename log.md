@@ -4,6 +4,55 @@
 
 ---
 
+## [2026-06-09] schema-update | epic3-scope-final — No data loss guarantee on CSV/XLSX upload
+
+- File: `wiki/analyses/epic3-scope-final.md`
+- Updated: D6 (`file_upload_handler.py`) — made explicit that every column is preserved; unrecognised columns → `extra_fields` JSONB verbatim; complete raw row → `raw_event_json` on Lead; rows with no identity fields still create a Lead (flagged, never discarded)
+- Updated: T10 — added assertions for `extra_fields` verbatim preservation, `raw_event_json` completeness, and no-identity-field row behaviour
+- Added: Key Constraint — "CSV/XLSX uploads preserve every column — no silent drops"
+- Rationale: unrecognised columns (Notes, Budget, Source Campaign, etc.) are LLM context for Epic 4 Rating Agent; dropping them degrades scoring quality
+
+---
+
+## [2026-06-09] schema-update | epic3-scope-final — Added CSV/XLSX file upload ingestion
+
+- File: `wiki/analyses/epic3-scope-final.md`
+- Added: Decision #15 (rule-based fuzzy column mapping via extended `STANDARD_FIELD_MAP` — no LLM call), Task D6 (`file_upload_handler.py`), Task T10 (file upload integration test), `POST /channels/inbound/file-upload` endpoint to B6 router, file upload path to data flow diagram
+- Rationale: Tenants need to upload historical leads from CRM exports. Rule-based fuzzy matching on column headers covers 90%+ of standard CRM export formats without an LLM call. Files ≤100 rows processed synchronously; >100 rows enqueued via Inngest. Bypasses two-stage filter (tenant-curated source). Unrecognised columns stored in `extra_fields` JSONB — not discarded.
+- Task count updated: 32 → 34; file count: 23 → 24
+- Index updated
+
+---
+
+## [2026-06-06] schema-update | epic3-scope-final — Added Google Forms webhook ingestion
+
+- File: `wiki/analyses/epic3-scope-final.md`
+- Added: Decision #14 (Apps Script webhook approach, not polling), Task D5 (`google_forms_webhook.py`), Task T9 (Google Forms integration test), `POST /channels/inbound/google-forms` endpoint to B6 router
+- Rationale: Google Forms has no native push API; polling via linked Sheet adds 15-min delay; Apps Script `onFormSubmit` trigger achieves ~1–3s latency. Enters as `event_type='lead_ad'` (structured source), bypasses two-stage filter
+- Task count updated: 30 → 32; file count: 22 → 23
+- Index updated
+
+---
+
+## [2026-06-06] analysis | epic3-scope-final — Final developer scope document filed
+
+- Filed: `wiki/analyses/epic3-scope-final.md`
+- 30 tasks across 5 groups: A1–A6 (foundation + models), B1–B6 (Meta webhooks + OAuth), C1–C6 (normalisation + filter + routing), D1–D4 (polling + email + sheets), T1–T8 (tests)
+- 23 files in `modules/lead_ingestion/`
+- Architectural decisions locked: Signal Extractor = Epic 4 (not Epic 3); Lead Ads bypass two-stage filter; EXISTING_CUSTOMER/UNCLEAR routing locked 2026-05-22; ChannelConnection model owned by Epic 2; all credentials via Secrets Manager only; NOISE exits with zero downstream calls
+- Pre-condition: epic2-scope-final corrected (Signal Extractor epic label changed Epic 3 → Epic 4 in Decision #1 and C1)
+- Index updated: epic3-scope-final added, epic2-scope-final updated date
+
+---
+
+## [2026-06-06] schema-update | epic2-scope-final — Corrected Signal Extractor epic label
+
+- File: `wiki/analyses/epic2-scope-final.md`
+- Correction: Decision #1 (line 31) and C1 (line 113) both referenced "Epic 3 Signal Extractor" — changed to "Epic 4 Signal Extractor"
+- Reason: Master blueprint (lines 256 and 549) is unambiguous — signal extractors (all 13 types) are Epic 4 / Sprint 4 Dev B. Epic 3 = Lead Ingestion ends at `captured` state; no extraction, no scoring.
+
+---
+
 ## [2026-06-05] analysis | epic2-scope-final — Final developer scope document filed
 
 - Filed: `wiki/analyses/epic2-scope-final.md`
